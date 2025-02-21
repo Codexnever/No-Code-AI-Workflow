@@ -1,38 +1,29 @@
 "use client";
-import React, { useCallback, useEffect } from "react";
-import ReactFlow, {
-  addEdge,
-  Background,
-  Controls,
-  MiniMap,
-  useEdgesState,
-  useNodesState,
-  Connection,
-  Node,
-} from "reactflow";
+import React, { useEffect, useCallback } from "react";
+import ReactFlow, { addEdge, Background, Controls, MiniMap, Connection, Node } from "reactflow";
 import "reactflow/dist/style.css";
 import AITaskNode from "../components/nodes/AITaskNode";
 import AiNode from "./AiNode";
+import { useWorkflowStore } from "../store/workflowStore";
 
-const nodeTypes = {
-  aiTask: AITaskNode,
-};
+const nodeTypes = { aiTask: AITaskNode };
 
 const WorkflowBuilder = () => {
-  const [nodes, setNodes, onNodesChange] = useNodesState([
-    {
-      id: "1",
-      type: "aiTask",
-      position: { x: 250, y: 150 },
-      data: { label: "AI Task Node" },
-    },
-  ]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  //  Get Zustand state 
+  const { nodes, edges, setNodes, setEdges, loadWorkflows, user } = useWorkflowStore();
 
-  const onConnect = useCallback(
-    (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
-    [setEdges]
-  );
+  //  workflows are loaded after login the user
+  useEffect(() => {
+    if (user) {
+      console.log("User logged in, loading workflows...");
+      loadWorkflows();
+    }
+  }, [user, loadWorkflows]);
+
+  const onConnect = useCallback((connection: Connection) => {
+    setEdges(addEdge(connection, edges));
+  }, [setEdges, edges]);
+  
 
   const handleDrop = (event: React.DragEvent) => {
     event.preventDefault();
@@ -40,20 +31,17 @@ const WorkflowBuilder = () => {
     if (!nodeType) return;
 
     const position = { x: event.clientX - 200, y: event.clientY - 50 };
-
     const newNode: Node = {
       id: `node-${nodes.length + 1}`,
       type: nodeType,
       position,
       data: { label: "AI Task Node" },
+      draggable: true,
     };
 
-    setNodes((nds) => [...nds, newNode]);
+    console.log("New Node:", newNode);
+    setNodes([...nodes, newNode]); // Zustand store updates ReactFlow now
   };
-
-  useEffect(() => {
-    console.log("React Flow Mounted");
-  }, []);
 
   return (
     <div className="flex w-full h-screen">
@@ -63,15 +51,7 @@ const WorkflowBuilder = () => {
         onDragOver={(event) => event.preventDefault()}
         onDrop={handleDrop}
       >
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          fitView
-          nodeTypes={nodeTypes}
-        >
+        <ReactFlow nodes={nodes} edges={edges} onConnect={onConnect} fitView nodeTypes={nodeTypes}>
           <MiniMap />
           <Controls />
           <Background />
