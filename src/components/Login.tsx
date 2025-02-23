@@ -10,7 +10,6 @@ const Login = () => {
   const logout = useWorkflowStore((state) => state.logout);
   const loadWorkflows = useWorkflowStore((state) => state.loadWorkflows);
   const user = useWorkflowStore((state) => state.user);
-  // const user = true;
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();

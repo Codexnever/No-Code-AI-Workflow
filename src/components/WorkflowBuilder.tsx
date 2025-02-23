@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useCallback } from "react";
-import ReactFlow, { addEdge, Background, Controls, MiniMap, Connection, Node } from "reactflow";
+import ReactFlow, { addEdge, Background, Controls, MiniMap, Connection, Node, applyNodeChanges } from "reactflow";
 import "reactflow/dist/style.css";
 import AITaskNode from "../components/nodes/AITaskNode";
 import AiNode from "./AiNode";
@@ -23,6 +23,13 @@ const WorkflowBuilder = () => {
   const onConnect = useCallback((connection: Connection) => {
     setEdges(addEdge(connection, edges));
   }, [setEdges, edges]);
+
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      setNodes(applyNodeChanges(changes, nodes));
+    },
+    [setNodes, nodes]
+  );
   
 
   const handleDrop = (event: React.DragEvent) => {
@@ -51,7 +58,7 @@ const WorkflowBuilder = () => {
         onDragOver={(event) => event.preventDefault()}
         onDrop={handleDrop}
       >
-        <ReactFlow nodes={nodes} edges={edges} onConnect={onConnect} fitView nodeTypes={nodeTypes}>
+        <ReactFlow  nodes={Array.isArray(nodes) ? nodes : []} edges={edges} onNodesChange={onNodesChange} onConnect={onConnect} fitView nodeTypes={nodeTypes}>
           <MiniMap />
           <Controls />
           <Background />
@@ -60,5 +67,5 @@ const WorkflowBuilder = () => {
     </div>
   );
 };
-
+//  onNodesChange={onNodesChange} 
 export default WorkflowBuilder;

@@ -34,12 +34,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       console.log("Logging in with email:", email);
       const account = new Account(client);
       await account.createEmailPasswordSession(email, password);
-     console.log('Movin towards setting user');
-      
       const user = await account.get();
-      console.log("Here in:", user);
-      set(() => ({ user: { id: user.$id, email: user.email } }));
+      set((state) => ({ user: { id: user.$id, email: user.email } }));
 
+      console.log("Logged in:", user);
       await get().loadWorkflows();
     } catch (error) {
       console.error("Login error:", error);
