@@ -1,4 +1,6 @@
-"use client";
+// src/components/WorkflowBuilder.tsx
+
+// "use client";
 import React, { useEffect, useCallback, useRef } from "react";
 import ReactFlow, { 
   addEdge, 
@@ -20,6 +22,7 @@ import AiNode from "./nodes/AiNode";
 import { useWorkflowStore } from "../store/workflowStore";
 import { Undo2, Redo2, Save } from "lucide-react";
 import { toast } from 'react-toastify';
+import WorkflowExecutionPanel from "./WorkflowExecutionPanel";
 
 const nodeTypes = { aiTask: AITaskNode };
 const edgeTypes: EdgeTypes = { conditional: ConditionalEdge };
@@ -108,7 +111,15 @@ const WorkflowBuilder: React.FC = () => {
       id: `node-${Date.now()}`,
       type: nodeType,
       position,
-      data: { label: "AI Task Node" },
+      data: { 
+        label: "AI Task Node",
+        parameters: {
+          prompt: "",
+          model: "gpt-3.5-turbo",
+          maxTokens: 100,
+          temperature: 0.7
+        }
+      },
       draggable: true,
     };
   
@@ -123,49 +134,52 @@ const WorkflowBuilder: React.FC = () => {
   return (
     <div className="flex w-full h-screen">
       <AiNode />
-      <div
-        ref={flowWrapperRef}
-        className="flex-grow w-full h-screen bg-gray-200 relative"
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={handleDrop}
-      >
-        <ReactFlow 
-          nodes={nodes} 
-          edges={edges} 
-          onNodesChange={onNodesChange} 
-          onConnect={onConnect} 
-          fitView 
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          defaultEdgeOptions={{ type: 'conditional' }}
+      <div className="flex-grow flex flex-col">
+        {user && <WorkflowExecutionPanel />}
+        <div
+          ref={flowWrapperRef}
+          className="flex-grow w-full h-screen bg-gray-200 relative"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={handleDrop}
         >
-          <Panel position="top-right" className="bg-white shadow-md rounded-md p-2 flex gap-2">
-            <button
-              onClick={undo}
-              className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md text-gray-700 transition-colors"
-              title="Undo (Ctrl+Z)"
-            >
-              <Undo2 size={18} />
-            </button>
-            <button
-              onClick={redo}
-              className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md text-gray-700 transition-colors"
-              title="Redo (Ctrl+Y or Ctrl+Shift+Z)"
-            >
-              <Redo2 size={18} />
-            </button>
-            <button
-              onClick={handleManualSave}
-              className="p-2 bg-blue-100 hover:bg-blue-200 rounded-md text-blue-700 transition-colors"
-              title="Save Workflow"
-            >
-              <Save size={18} />
-            </button>
-          </Panel>
-          <MiniMap />
-          <Controls />
-          <Background />
-        </ReactFlow>
+          <ReactFlow 
+            nodes={nodes} 
+            edges={edges} 
+            onNodesChange={onNodesChange} 
+            onConnect={onConnect} 
+            fitView 
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            defaultEdgeOptions={{ type: 'conditional' }}
+          >
+            <Panel position="top-right" className="bg-white shadow-md rounded-md p-2 flex gap-2">
+              <button
+                onClick={undo}
+                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md text-gray-700 transition-colors"
+                title="Undo (Ctrl+Z)"
+              >
+                <Undo2 size={18} />
+              </button>
+              <button
+                onClick={redo}
+                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md text-gray-700 transition-colors"
+                title="Redo (Ctrl+Y or Ctrl+Shift+Z)"
+              >
+                <Redo2 size={18} />
+              </button>
+              <button
+                onClick={handleManualSave}
+                className="p-2 bg-blue-100 hover:bg-blue-200 rounded-md text-blue-700 transition-colors"
+                title="Save Workflow"
+              >
+                <Save size={18} />
+              </button>
+            </Panel>
+            <MiniMap />
+            <Controls />
+            <Background />
+          </ReactFlow>
+        </div>
       </div>
     </div>
   );
