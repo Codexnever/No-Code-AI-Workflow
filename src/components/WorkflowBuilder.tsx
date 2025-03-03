@@ -1,6 +1,6 @@
 // src/components/WorkflowBuilder.tsx
 
-// "use client";
+"use client";
 import React, { useEffect, useCallback, useRef } from "react";
 import ReactFlow, { 
   addEdge, 
