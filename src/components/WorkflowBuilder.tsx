@@ -9,18 +9,22 @@ import ReactFlow, {
   Node, 
   applyNodeChanges,
   NodeChange,
-  Panel 
+  Panel,
+  Edge,
+  EdgeTypes
 } from "reactflow";
 import "reactflow/dist/style.css";
 import AITaskNode from "../components/nodes/AITaskNode";
-import AiNode from "./AiNode";
+import ConditionalEdge from "../components/ConditionalEdge";
+import AiNode from "./nodes/AiNode";
 import { useWorkflowStore } from "../store/workflowStore";
 import { Undo2, Redo2, Save } from "lucide-react";
+import { toast } from 'react-toastify';
 
 const nodeTypes = { aiTask: AITaskNode };
+const edgeTypes: EdgeTypes = { conditional: ConditionalEdge };
 
-const WorkflowBuilder = () => {
-  // Get Zustand state 
+const WorkflowBuilder: React.FC = () => {
   const { 
     nodes, 
     edges, 
@@ -36,26 +40,22 @@ const WorkflowBuilder = () => {
   
   const flowWrapperRef = useRef<HTMLDivElement>(null);
 
-  // Workflows are loaded after login the user
   useEffect(() => {
     if (user) {
-      console.log("User logged in, loading workflows...");
+      toast.success("User logged in, loading workflows...");
       loadWorkflows();
     }
   }, [user, loadWorkflows]);
 
-  // Add keyboard event listeners for undo/redo
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!user) return;
       
-      // Check for Ctrl+Z (Undo)
       if (event.ctrlKey && event.key === 'z' && !event.shiftKey) {
         event.preventDefault();
         undo();
       }
       
-      // Check for Ctrl+Shift+Z or Ctrl+Y (Redo)
       if ((event.ctrlKey && event.shiftKey && event.key === 'z') || 
           (event.ctrlKey && event.key === 'y')) {
         event.preventDefault();
@@ -70,39 +70,49 @@ const WorkflowBuilder = () => {
   }, [undo, redo, user]);
 
   const onConnect = useCallback((connection: Connection) => {
-    setEdges(addEdge(connection, edges));
+    if (!connection.source || !connection.target) return; // Ensure source & target exist
+  
+    const newEdge: Edge = {
+      id: `edge-${Date.now()}`,
+      type: 'conditional',
+      data: { condition: 'always' },
+      source: connection.source as string,
+      target: connection.target as string,
+      sourceHandle: connection.sourceHandle || undefined,
+      targetHandle: connection.targetHandle || undefined
+    };
+  
+    // Fix: Call setEdges directly with the new array instead of passing a function
+    setEdges([...edges, newEdge]);
   }, [setEdges, edges]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
+      // Fix: Call setNodes directly with the result of applyNodeChanges
       setNodes(applyNodeChanges(changes, nodes));
     },
     [setNodes, nodes]
   );
-  
+
   const handleDrop = (event: React.DragEvent) => {
     event.preventDefault();
     const nodeType = event.dataTransfer.getData("application/reactflow");
     if (!nodeType) return;
-
-    // Calculate position relative to the flow container
+  
     const reactFlowBounds = flowWrapperRef.current?.getBoundingClientRect();
-    const position = reactFlowBounds 
-      ? { 
-          x: event.clientX - reactFlowBounds.left - 75, // Adjust for node width
-          y: event.clientY - reactFlowBounds.top - 20   // Adjust for node height
-        }
+    const position = reactFlowBounds
+      ? { x: event.clientX - reactFlowBounds.left - 75, y: event.clientY - reactFlowBounds.top - 20 }
       : { x: event.clientX - 200, y: event.clientY - 50 };
-
+  
     const newNode: Node = {
-      id: `node-${Date.now()}`, // Use timestamp for unique IDs
+      id: `node-${Date.now()}`,
       type: nodeType,
       position,
       data: { label: "AI Task Node" },
       draggable: true,
     };
-
-    console.log("New Node:", newNode);
+  
+    // Fix: Call setNodes directly with the new array instead of passing a function
     setNodes([...nodes, newNode]);
   };
 
@@ -120,12 +130,14 @@ const WorkflowBuilder = () => {
         onDrop={handleDrop}
       >
         <ReactFlow 
-          nodes={Array.isArray(nodes) ? nodes : []} 
+          nodes={nodes} 
           edges={edges} 
           onNodesChange={onNodesChange} 
           onConnect={onConnect} 
           fitView 
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          defaultEdgeOptions={{ type: 'conditional' }}
         >
           <Panel position="top-right" className="bg-white shadow-md rounded-md p-2 flex gap-2">
             <button

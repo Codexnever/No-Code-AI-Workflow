@@ -37,12 +37,12 @@ const Login = () => {
           <form onSubmit={handleLogin}>
             <h2 className="text-xl font-semibold mb-4 text-center">Login</h2>
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-600 mb-1">Email</label>
+              <label className="block text-sm font-medium text-gray-800 mb-1">Email</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full p-2 border rounded focus:ring focus:ring-blue-300"
+                className="w-full p-2 border rounded focus:ring focus:ring-blue-300 text-black"
                 required
               />
             </div>
@@ -52,7 +52,7 @@ const Login = () => {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full p-2 border rounded focus:ring focus:ring-blue-300"
+                className="w-full p-2 border rounded focus:ring focus:ring-blue-300 text-black"
                 required
               />
             </div>
