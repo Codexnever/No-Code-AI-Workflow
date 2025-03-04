@@ -3,6 +3,11 @@ import { client, databases, Role, Permission, Account, ID, Query } from "../lib/
 import { debounce } from "lodash";
 import { toast } from 'react-toastify';
 
+const debouncedSave = debounce(() => {
+  const { currentWorkflowId, workflowName } = useWorkflowStore.getState();
+  useWorkflowStore.getState().saveWorkflow(workflowName);
+}, 2000);
+
 interface WorkflowState {
   user: any | null;
   nodes: any[];
@@ -11,6 +16,7 @@ interface WorkflowState {
   workflowName: string;
   history: { nodes: any[], edges: any[] }[];
   historyIndex: number;
+  workflowResults: Record<string, any>;
   setNodes: (nodes: any[]) => void;
   setEdges: (edges: any[]) => void;
   deleteNode: (nodeId: string) => void;
@@ -22,6 +28,7 @@ interface WorkflowState {
   logout: () => Promise<void>;
   saveWorkflow: (name: string) => Promise<void>;
   loadWorkflows: () => Promise<void>;
+  fetchWorkflowResults: (workflowExecutionId: string) => Promise<void>;
 }
 
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
@@ -32,13 +39,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   workflowName: "My Workflow",
   history: [],
   historyIndex: -1,
+  workflowResults: {},
 
   saveToHistory: () => {
     const { nodes, edges, history, historyIndex } = get();
-    const currentState = {
-      nodes: JSON.parse(JSON.stringify(nodes)),
-      edges: JSON.parse(JSON.stringify(edges))
-    };
+    const currentState = { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) };
     const newHistory = history.slice(0, historyIndex + 1);
     newHistory.push(currentState);
     set({ history: newHistory, historyIndex: newHistory.length - 1 });
@@ -59,9 +64,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   updateEdge: (edgeId, newData) => {
     const { edges } = get();
     get().saveToHistory();
-    const updatedEdges = edges.map(edge =>
-      edge.id === edgeId ? { ...edge, data: { ...edge.data, ...newData } } : edge
-    );
+    const updatedEdges = edges.map(edge => edge.id === edgeId ? { ...edge, data: { ...edge.data, ...newData } } : edge);
     set({ edges: updatedEdges });
     debouncedSave();
   },
@@ -130,8 +133,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         await databases.updateDocument("67b4eba50033539bd242", "67b4ebad0007bf1d3f85", currentWorkflowId, { name: saveName, nodes: serializedNodes, edges: serializedEdges, lastUpdated: new Date().toISOString() });
       } else {
         const response = await databases.createDocument("67b4eba50033539bd242", "67b4ebad0007bf1d3f85", ID.unique(), { userId: user.id, name: saveName, nodes: serializedNodes, edges: serializedEdges, created: new Date().toISOString(), lastUpdated: new Date().toISOString() }
-          , [Permission.read(Role.user(user.id)), Permission.update(Role.user(user.id)),
-          Permission.delete(Role.user(user.id))]);
+          , [Permission.read(Role.user(user.id)), Permission.update(Role.user(user.id)), Permission.delete(Role.user(user.id))]);
         set({ currentWorkflowId: response.$id, workflowName: saveName });
       }
     } catch (error) {
@@ -146,17 +148,17 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       const response = await databases.listDocuments("67b4eba50033539bd242", "67b4ebad0007bf1d3f85", [Query.equal("userId", user.id), Query.orderDesc("lastUpdated")]);
       if (response.documents.length > 0) {
         const latestWorkflow = response.documents[0];
-        const nodes = latestWorkflow.nodes ? JSON.parse(latestWorkflow.nodes) : [];
-        const edges = latestWorkflow.edges ? JSON.parse(latestWorkflow.edges) : [];
-        set({ nodes, edges, currentWorkflowId: latestWorkflow.$id, workflowName: latestWorkflow.name || "My Workflow", history: [{ nodes, edges }], historyIndex: 0 });
+        set({
+          nodes: JSON.parse(latestWorkflow.nodes || '[]'),
+          edges: JSON.parse(latestWorkflow.edges || '[]'),
+          currentWorkflowId: latestWorkflow.$id,
+          workflowName: latestWorkflow.name || "My Workflow",
+          history: [{ nodes: JSON.parse(latestWorkflow.nodes || '[]'), edges: JSON.parse(latestWorkflow.edges || '[]') }],
+          historyIndex: 0
+        });
       }
     } catch (error) {
       console.error("Error loading workflows:", error);
     }
   }
 }));
-
-const debouncedSave = debounce(() => {
-  const { currentWorkflowId, workflowName } = useWorkflowStore.getState();
-  useWorkflowStore.getState().saveWorkflow(workflowName);
-}, 2000);
