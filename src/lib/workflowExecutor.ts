@@ -3,29 +3,54 @@
 import { Node, Edge } from 'reactflow';
 import { toast } from 'react-toastify';
 import OpenAI from 'openai';
-import { databases, ID, Permission, Role } from './appwrite';
+import { databases, ID, Permission, Role, Query } from './appwrite';
 
-// OpenAI configuration
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  dangerouslyAllowBrowser: true // Only for client-side demo, use backend in production
-});
+// OpenAI configuration with typed configuration
+interface AIModelConfig {
+  apiKey: string;
+  model: string;
+  maxTokens?: number;
+  temperature?: number;
+}
 
-export type EdgeCondition = 'success' | 'error' | 'always';
+const openaiModels: Record<string, AIModelConfig> = {
+  'gpt-3.5-turbo': {
+    apiKey: process.env.OPENAI_API_KEY || '',
+    model: 'gpt-3.5-turbo',
+    maxTokens: 1000,
+    temperature: 0.7
+  },
+  'gpt-4': {
+    apiKey: process.env.OPENAI_API_KEY || '',
+    model: 'gpt-4',
+    maxTokens: 2000,
+    temperature: 0.7
+  }
+};
 
+// Enhanced type definitions
 export interface TaskConfig {
   type: string;
-  parameters: Record<string, any>;
+  parameters: {
+    prompt: string;
+    model: string;
+    maxTokens?: number;
+    temperature?: number;
+  };
 }
 
 export interface TaskResult {
   success: boolean;
-  data?: any;
+  data?: {
+    text: string;
+    tokens: number;
+    model: string;
+  };
   error?: string;
-  metadata?: {
+  metadata: {
     nodeId: string;
+    workflowExecutionId: string;
     timestamp: string;
-    workflowId?: string;
   };
 }
 
@@ -33,26 +58,29 @@ export interface TaskHandler {
   execute: (config: TaskConfig, previousResults?: Record<string, TaskResult>) => Promise<TaskResult>;
 }
 
-const taskHandlers: Record<string, TaskHandler> = {};
-
-export function registerTaskHandler(type: string, handler: TaskHandler): void {
-  taskHandlers[type] = handler;
-}
-
+// Enhanced AI Task Handler
 export class AITaskHandler implements TaskHandler {
-  async execute(config: TaskConfig, previousResults?: Record<string, TaskResult>): Promise<TaskResult> {
+  async execute(
+    config: TaskConfig, 
+    previousResults: Record<string, TaskResult> = {}
+  ): Promise<TaskResult> {
     try {
       const { prompt, model, maxTokens, temperature } = config.parameters;
+      const modelConfig = openaiModels[model] || openaiModels['gpt-3.5-turbo'];
 
-      const enhancedPrompt = previousResults 
-        ? this.enhancePromptWithContext(prompt, previousResults)
-        : prompt;
+      const openai = new OpenAI({
+        apiKey: modelConfig.apiKey,
+        dangerouslyAllowBrowser: true // Use backend in production
+      });
+
+      // Enhance prompt with context from previous nodes
+      const enhancedPrompt = this.buildContextualPrompt(prompt, previousResults);
 
       const response = await openai.chat.completions.create({
-        model: model || 'gpt-3.5-turbo',
+        model: modelConfig.model,
         messages: [{ role: 'user', content: enhancedPrompt }],
-        max_tokens: maxTokens,
-        temperature: temperature
+        max_tokens: maxTokens || modelConfig.maxTokens,
+        temperature: temperature || modelConfig.temperature
       });
 
       const aiResponse = response.choices[0].message.content || '';
@@ -66,6 +94,7 @@ export class AITaskHandler implements TaskHandler {
         },
         metadata: {
           nodeId: config.type,
+          workflowExecutionId: '', // Will be set during workflow execution
           timestamp: new Date().toISOString()
         }
       };
@@ -73,36 +102,47 @@ export class AITaskHandler implements TaskHandler {
       console.error('AI Task execution error:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error in AI task execution',
+        error: error instanceof Error ? error.message : 'Unknown AI task error',
         metadata: {
           nodeId: config.type,
+          workflowExecutionId: '', // Will be set during workflow execution
           timestamp: new Date().toISOString()
         }
       };
     }
   }
 
-  private enhancePromptWithContext(originalPrompt: string, previousResults: Record<string, TaskResult>): string {
+  private buildContextualPrompt(
+    originalPrompt: string, 
+    previousResults: Record<string, TaskResult>
+  ): string {
     const contextParts = Object.entries(previousResults)
       .filter(([_, result]) => result.success)
       .map(([nodeId, result]) => 
-        `Previous node (${nodeId}) result: ${result.data?.text || JSON.stringify(result.data)}`
+        `Context from node ${nodeId}: ${result.data?.text || 'No detailed context'}`
       );
 
     return [
       ...contextParts,
-      'Original prompt:',
+      'Current task prompt:',
       originalPrompt
     ].join('\n\n');
   }
 }
 
-function findNextNodes(nodeId: string, edges: Edge[], nodes: Node[], condition: EdgeCondition): Node[] {
+// Workflow Execution Utilities
+function findNextNodes(
+  nodeId: string, 
+  edges: Edge[], 
+  nodes: Node[], 
+  condition: 'success' | 'error' | 'always'
+): Node[] {
   const outgoingEdges = edges.filter(edge => edge.source === nodeId);
   const validEdges = outgoingEdges.filter(edge => {
-    const edgeCondition = edge.data?.condition as EdgeCondition || 'always';
+    const edgeCondition = edge.data?.condition || 'always';
     return edgeCondition === 'always' || edgeCondition === condition;
   });
+  
   const nextNodeIds = validEdges.map(edge => edge.target);
   return nodes.filter(node => nextNodeIds.includes(node.id));
 }
@@ -113,39 +153,53 @@ function findStartNode(nodes: Node[], edges: Edge[]): Node | null {
   return startNodes.length > 0 ? startNodes[0] : null;
 }
 
-async function executeTask(node: Node, previousResults: Record<string, TaskResult>): Promise<TaskResult> {
-  const nodeType = node.type || 'aiTask';
-  const taskConfig: TaskConfig = { type: nodeType, parameters: node.data?.parameters || {} };
-  const handler = taskHandlers[nodeType];
-  if (!handler) return { success: false, error: `No handler for task type: ${nodeType}` };
-  toast.info(`Executing node: ${node.data?.label || node.id}`);
-  return await handler.execute(taskConfig, previousResults);
-}
-
-export async function executeWorkflow(nodes: Node[], edges: Edge[]): Promise<Record<string, TaskResult>> {
+// Core Workflow Execution
+export async function executeWorkflow(
+  nodes: Node[], 
+  edges: Edge[]
+): Promise<Record<string, TaskResult>> {
+  const workflowExecutionId = ID.unique();
   const results: Record<string, TaskResult> = {};
   const startNode = findStartNode(nodes, edges);
+
   if (!startNode) {
     toast.error('No starting node found in the workflow');
     return results;
   }
-  const workflowExecutionId = ID.unique();
-  const queue: { node: Node, dependencies: string[] }[] = [{ node: startNode, dependencies: [] }];
+
+  const queue: { node: Node, dependencies: string[] }[] = [
+    { node: startNode, dependencies: [] }
+  ];
   const enqueued = new Set<string>([startNode.id]);
   const executed = new Set<string>();
+
   while (queue.length > 0) {
     const { node, dependencies } = queue.shift()!;
+
+    // Wait for dependencies to complete
     if (!dependencies.every(depId => executed.has(depId))) {
       queue.push({ node, dependencies });
       continue;
     }
+
+    // Execute the task
     const result = await executeTask(node, results);
-    result.metadata = { ...result.metadata, workflowId: workflowExecutionId };
+    
+    // Attach workflow execution ID
+    result.metadata.workflowExecutionId = workflowExecutionId;
+
+    // Store workflow result in Appwrite
     await storeWorkflowResult(workflowExecutionId, node.id, result);
+
+    // Track results and executed nodes
     results[node.id] = result;
     executed.add(node.id);
+
+    // Determine next nodes based on execution result
     const condition = result.success ? 'success' : 'error';
     const nextNodes = findNextNodes(node.id, edges, nodes, condition);
+
+    // Queue next nodes
     for (const nextNode of nextNodes) {
       if (!enqueued.has(nextNode.id)) {
         queue.push({ node: nextNode, dependencies: [node.id] });
@@ -153,21 +207,99 @@ export async function executeWorkflow(nodes: Node[], edges: Edge[]): Promise<Rec
       }
     }
   }
+
+  // Notify execution completion
   executed.size < nodes.length
     ? toast.warning(`Only ${executed.size}/${nodes.length} nodes executed.`)
     : toast.success('Workflow executed successfully!');
+
   return results;
 }
 
-async function storeWorkflowResult(workflowExecutionId: string, nodeId: string, result: TaskResult) {
+// Workflow Result Storage in Appwrite
+async function storeWorkflowResult(
+  workflowExecutionId: string, 
+  nodeId: string, 
+  result: TaskResult
+) {
   try {
-    await databases.createDocument("67b4eba50033539bd242", "workflow_results", ID.unique(), {
-      workflowExecutionId, nodeId, result: JSON.stringify(result), timestamp: new Date().toISOString()
-    }, [Permission.read(Role.any()), Permission.update(Role.any()), Permission.delete(Role.any())]);
+    await databases.createDocument(
+      "67b4eba50033539bd242",  // Database ID
+      "workflow_results",      // Collection ID
+      ID.unique(),
+      {
+        workflowExecutionId,
+        nodeId,
+        result: JSON.stringify(result),
+        timestamp: new Date().toISOString()
+      },
+      [
+        Permission.read(Role.any()),
+        Permission.update(Role.any()),
+        Permission.delete(Role.any())
+      ]
+    );
   } catch (error) {
     console.error('Error storing workflow result:', error);
     toast.error('Failed to store workflow result');
   }
 }
 
+// Retrieve Workflow Results
+export async function fetchWorkflowResults(
+  workflowExecutionId: string
+): Promise<Record<string, TaskResult>> {
+  try {
+    const response = await databases.listDocuments(
+      "67b4eba50033539bd242",
+      "workflow_results",
+      [Query.equal("workflowExecutionId", workflowExecutionId)]
+    );
+
+    return response.documents.reduce((acc, doc) => {
+      const result = JSON.parse(doc.result);
+      acc[result.metadata.nodeId] = result;
+      return acc;
+    }, {} as Record<string, TaskResult>);
+  } catch (error) {
+    console.error('Error fetching workflow results:', error);
+    toast.error('Failed to retrieve workflow results');
+    return {};
+  }
+}
+
+// Register AI Task Handler
+const taskHandlers: Record<string, TaskHandler> = {};
+export function registerTaskHandler(type: string, handler: TaskHandler): void {
+  taskHandlers[type] = handler;
+}
+
+async function executeTask(
+  node: Node, 
+  previousResults: Record<string, TaskResult>
+): Promise<TaskResult> {
+  const nodeType = node.type || 'aiTask';
+  const taskConfig: TaskConfig = { 
+    type: nodeType, 
+    parameters: node.data?.parameters || {} 
+  };
+  
+  const handler = taskHandlers[nodeType];
+  if (!handler) {
+    return { 
+      success: false, 
+      error: `No handler for task type: ${nodeType}`,
+      metadata: {
+        nodeId: node.id,
+        workflowExecutionId: '',
+        timestamp: new Date().toISOString()
+      }
+    };
+  }
+
+  toast.info(`Executing node: ${node.data?.label || node.id}`);
+  return await handler.execute(taskConfig, previousResults);
+}
+
+// Default AI Task Handler Registration
 registerTaskHandler('aiTask', new AITaskHandler());
