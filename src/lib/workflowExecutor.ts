@@ -31,6 +31,8 @@ const openaiModels: Record<string, AIModelConfig> = {
 // Enhanced type definitions
 export interface TaskConfig {
   type: string;
+  
+  nodeId: string;
   parameters: {
     prompt: string;
     model: string;
@@ -51,6 +53,7 @@ export interface TaskResult {
     nodeId: string;
     workflowExecutionId: string;
     timestamp: string;
+    taskType?: string;
   };
 }
 
@@ -94,7 +97,7 @@ export class AITaskHandler implements TaskHandler {
         },
         metadata: {
           nodeId: config.type,
-          workflowExecutionId: '', // Will be set during workflow execution
+          workflowExecutionId:'', // Will be set during workflow execution
           timestamp: new Date().toISOString()
         }
       };
@@ -281,6 +284,7 @@ async function executeTask(
   const nodeType = node.type || 'aiTask';
   const taskConfig: TaskConfig = { 
     type: nodeType, 
+    nodeId: node.id,
     parameters: node.data?.parameters || {} 
   };
   
