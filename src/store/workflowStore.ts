@@ -49,6 +49,27 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set({ history: newHistory, historyIndex: newHistory.length - 1 });
   },
 
+  fetchWorkflowResults: async (workflowExecutionId: string) => {
+    try {
+      const response = await databases.getDocument(
+        "67b4eba50033539bd242",
+        "67b4ebad0007bf1d3f85",
+        workflowExecutionId
+      );
+  
+      if (response) {
+        set((state) => ({
+          workflowResults: {
+            ...state.workflowResults,
+            [workflowExecutionId]: response,
+          },
+        }));
+      }
+    } catch (error) {
+      console.error("Error fetching workflow results:", error);
+    }
+  },
+  
   setNodes: (newNodes) => {
     get().saveToHistory();
     set({ nodes: newNodes });

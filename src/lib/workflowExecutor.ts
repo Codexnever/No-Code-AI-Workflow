@@ -14,18 +14,18 @@ interface AIModelConfig {
 }
 
 const openaiModels: Record<string, AIModelConfig> = {
-  'gpt-3.5-turbo': {
-    apiKey: process.env.OPENAI_API_KEY || '',
-    model: 'gpt-3.5-turbo',
-    maxTokens: 1000,
+  'gpt-4o-mini': {
+    apiKey: process.env.OPENAI_API_KEY || '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',
+    model: 'gpt-4o-mini',
+    maxTokens: 100,
     temperature: 0.7
   },
-  'gpt-4': {
-    apiKey: process.env.OPENAI_API_KEY || '',
-    model: 'gpt-4',
-    maxTokens: 2000,
-    temperature: 0.7
-  }
+  // 'gpt-4': {
+  //   apiKey: process.env.OPENAI_API_KEY || '',
+  //   model: 'gpt-4',
+  //   maxTokens: 2000,
+  //   temperature: 0.7
+  // }
 };
 
 // Enhanced type definitions
@@ -66,7 +66,7 @@ export class AITaskHandler implements TaskHandler {
   ): Promise<TaskResult> {
     try {
       const { prompt, model, maxTokens, temperature } = config.parameters;
-      const modelConfig = openaiModels[model] || openaiModels['gpt-3.5-turbo'];
+      const modelConfig = openaiModels[model] || openaiModels['gpt-4o-mini'];
 
       const openai = new OpenAI({
         apiKey: modelConfig.apiKey,
@@ -225,7 +225,7 @@ async function storeWorkflowResult(
   try {
     await databases.createDocument(
       "67b4eba50033539bd242",  // Database ID
-      "workflow_results",      // Collection ID
+      "67c5eb7d001f3c955715",  // Collection ID
       ID.unique(),
       {
         workflowExecutionId,
@@ -252,7 +252,7 @@ export async function fetchWorkflowResults(
   try {
     const response = await databases.listDocuments(
       "67b4eba50033539bd242",
-      "workflow_results",
+      "67c5eb7d001f3c955715",
       [Query.equal("workflowExecutionId", workflowExecutionId)]
     );
 

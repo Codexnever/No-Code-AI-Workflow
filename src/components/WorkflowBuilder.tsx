@@ -115,7 +115,7 @@ const WorkflowBuilder: React.FC = () => {
         label: "AI Task Node",
         parameters: {
           prompt: "",
-          model: "gpt-3.5-turbo",
+          model: "gpt-4o-mini",
           maxTokens: 100,
           temperature: 0.7
         }

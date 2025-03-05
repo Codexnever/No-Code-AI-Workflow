@@ -23,7 +23,7 @@ export class AITaskHandler implements TaskHandler {
       const prompt = params.prompt || 'Default prompt';
       
       // Extract model configuration
-      const model = params.model || 'gpt-3.5-turbo';
+      const model = params.model || 'gpt-4o-mini';
       const maxTokens = params.maxTokens || 100;
       const temperature = params.temperature || 0.7;
       
