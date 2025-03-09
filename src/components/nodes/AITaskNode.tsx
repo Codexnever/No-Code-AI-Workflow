@@ -13,7 +13,7 @@ const AITaskNode = ({ data, id }: NodeProps) => {
   
   // State for AI task parameters
   const [prompt, setPrompt] = useState(data.parameters?.prompt || "");
-  const [model, setModel] = useState(data.parameters?.model || "gpt-4o-mini");
+  const [model, setModel] = useState(data.parameters?.model || "gpt-3.5-turbo");
   const [maxTokens, setMaxTokens] = useState(data.parameters?.maxTokens || 100);
   const [temperature, setTemperature] = useState(data.parameters?.temperature || 0.7);
   
@@ -216,7 +216,7 @@ const AITaskNode = ({ data, id }: NodeProps) => {
                 onChange={(e) => setModel(e.target.value)}
                 className="w-full text-black text-sm border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-300 focus:border-blue-300"
               >
-                <option value="gpt-4o-mini">gpt-4o-mini</option>
+                <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
                 <option value="gpt-4">GPT-4</option>
                 <option value="claude-3">Claude 3</option>
                 <option value="llama-2">Llama 2</option>

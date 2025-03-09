@@ -12,11 +12,11 @@ interface AIModelConfig {
   maxTokens?: number;
   temperature?: number;
 }
-
+let apiCallCount = 0;
 const openaiModels: Record<string, AIModelConfig> = {
-  'gpt-4o-mini': {
-    apiKey: process.env.OPENAI_API_KEY || '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',
-    model: 'gpt-4o-mini',
+  'gpt-3.5-turbo': {
+    apiKey: process.env.OPENAI_API_KEY || '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',
+    model: 'gpt-3.5-turbo',
     maxTokens: 100,
     temperature: 0.7
   },
@@ -69,7 +69,7 @@ export class AITaskHandler implements TaskHandler {
   ): Promise<TaskResult> {
     try {
       const { prompt, model, maxTokens, temperature } = config.parameters;
-      const modelConfig = openaiModels[model] || openaiModels['gpt-4o-mini'];
+      const modelConfig = openaiModels[model] || openaiModels['gpt-3.5-turbo'];
 
       const openai = new OpenAI({
         apiKey: modelConfig.apiKey,
@@ -78,7 +78,8 @@ export class AITaskHandler implements TaskHandler {
 
       // Enhance prompt with context from previous nodes
       const enhancedPrompt = this.buildContextualPrompt(prompt, previousResults);
-
+      console.log(`Sending API request ${apiCallCount + 1}: Model - ${modelConfig.model}`);
+      apiCallCount++;
       const response = await openai.chat.completions.create({
         model: modelConfig.model,
         messages: [{ role: 'user', content: enhancedPrompt }],
@@ -161,10 +162,11 @@ export async function executeWorkflow(
   nodes: Node[], 
   edges: Edge[]
 ): Promise<Record<string, TaskResult>> {
+  apiCallCount = 0;
+  console.log('Execution process is starting...');
   const workflowExecutionId = ID.unique();
   const results: Record<string, TaskResult> = {};
   const startNode = findStartNode(nodes, edges);
-
   if (!startNode) {
     toast.error('No starting node found in the workflow');
     return results;
@@ -184,10 +186,11 @@ export async function executeWorkflow(
       queue.push({ node, dependencies });
       continue;
     }
+    console.log(`Executing node ${node.id}`);
 
     // Execute the task
     const result = await executeTask(node, results);
-    
+    console.log('Resulting task:-',result)
     // Attach workflow execution ID
     result.metadata.workflowExecutionId = workflowExecutionId;
 
@@ -197,7 +200,7 @@ export async function executeWorkflow(
     // Track results and executed nodes
     results[node.id] = result;
     executed.add(node.id);
-
+console.log('going to next nod eexecution')
     // Determine next nodes based on execution result
     const condition = result.success ? 'success' : 'error';
     const nextNodes = findNextNodes(node.id, edges, nodes, condition);
@@ -216,6 +219,7 @@ export async function executeWorkflow(
     ? toast.warning(`Only ${executed.size}/${nodes.length} nodes executed.`)
     : toast.success('Workflow executed successfully!');
 
+    console.log(`Total API Calls during execution: ${apiCallCount}`);
   return results;
 }
 
