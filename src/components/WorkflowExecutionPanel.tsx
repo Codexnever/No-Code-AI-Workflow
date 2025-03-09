@@ -2,139 +2,96 @@
 
 "use client";
 import React, { useState } from 'react';
-import { useWorkflowStore } from '../store/workflowStore';
 import { executeWorkflow } from '../lib/workflowExecutor';
-import { Play, AlertCircle, CheckCircle, Clock } from 'lucide-react';
-
-interface ExecutionStatus {
-  status: 'idle' | 'running' | 'completed' | 'error';
-  message?: string;
-  results?: Record<string, any>;
-  startTime?: number;
-  endTime?: number;
-}
+import { useWorkflowStore } from '../store/workflowStore';
+import { Play, Save, Settings } from 'lucide-react';
+import { toast } from 'react-toastify';
+import APIKeyManager from '../components/others/APIKeyManager';
 
 const WorkflowExecutionPanel: React.FC = () => {
-  const { nodes, edges, workflowName } = useWorkflowStore();
-  const [execution, setExecution] = useState<ExecutionStatus>({ status: 'idle' });
+  const { 
+    nodes, 
+    edges, 
+    saveWorkflow, 
+    workflowName, 
+    setWorkflowName 
+  } = useWorkflowStore();
   
+  const [showSettings, setShowSettings] = useState(false);
+  const [executing, setExecuting] = useState(false);
+
   const handleExecute = async () => {
-    if (execution.status === 'running') return;
-    
     if (nodes.length === 0) {
-      setExecution({ 
-        status: 'error', 
-        message: 'No nodes in the workflow to execute'
-      });
+      toast.error('No nodes in workflow to execute');
       return;
     }
     
-    setExecution({ 
-      status: 'running', 
-      message: 'Workflow execution started...', 
-      startTime: Date.now()
-    });
-    
     try {
-      const results = await executeWorkflow(nodes, edges);
+      setExecuting(true);
+      toast.info('Starting workflow execution...');
       
-      setExecution({
-        status: 'completed',
-        results,
-        message: 'Workflow execution completed',
-        startTime: execution.startTime,
-        endTime: Date.now()
-      });
+      const results = await executeWorkflow(nodes, edges);
+      console.log('Workflow execution results:', results);
+      
+      toast.success('Workflow execution completed!');
     } catch (error) {
-      setExecution({
-        status: 'error',
-        message: error instanceof Error ? error.message : 'Workflow execution failed',
-        startTime: execution.startTime,
-        endTime: Date.now()
-      });
+      console.error('Workflow execution error:', error);
+      toast.error('Error executing workflow');
+    } finally {
+      setExecuting(false);
     }
   };
-  
-  // Calculate execution time in seconds
-  const executionTime = execution.endTime && execution.startTime 
-    ? ((execution.endTime - execution.startTime) / 1000).toFixed(2)
-    : null;
-  
-  // Count successful and failed nodes in results
-  const getResultsSummary = () => {
-    if (!execution.results) return { success: 0, failure: 0 };
-    
-    const success = Object.values(execution.results).filter(r => r.success).length;
-    const failure = Object.values(execution.results).filter(r => !r.success).length;
-    
-    return { success, failure };
+
+  const handleSave = () => {
+    saveWorkflow(workflowName);
+    toast.success('Workflow saved successfully!');
   };
-  
-  const { success, failure } = getResultsSummary();
-  
+
   return (
-    <div className="bg-white rounded-lg shadow-md p-4 mb-4">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-800">Execute Workflow</h3>
-        <button
-          onClick={handleExecute}
-          disabled={execution.status === 'running'}
-          className={`px-4 py-2 rounded-md flex items-center gap-2 ${
-            execution.status === 'running'
-              ? 'bg-gray-400 cursor-not-allowed'
-              : 'bg-green-600 hover:bg-green-700 text-white'
-          }`}
-        >
-          <Play size={16} />
-          {execution.status === 'running' ? 'Running...' : 'Execute'}
-        </button>
+    <div className="bg-white border-b border-gray-300 px-4 py-3 flex flex-col">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center">
+          <input
+            type="text"
+            value={workflowName}
+            onChange={(e) => setWorkflowName(e.target.value)}
+            className="mr-2 px-3 py-2 border border-gray-300 rounded text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Workflow Name"
+          />
+          <button
+            onClick={handleSave}
+            className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded mr-2 flex items-center"
+          >
+            <Save size={16} className="mr-2" />
+            Save
+          </button>
+        </div>
+        
+        <div className="flex items-center">
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded mr-2"
+          >
+            <Settings size={16} />
+          </button>
+          <button
+            onClick={handleExecute}
+            disabled={executing || nodes.length === 0}
+            className={`px-4 py-2 rounded flex items-center ${
+              executing || nodes.length === 0
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-green-600 hover:bg-green-700 text-white'
+            }`}
+          >
+            <Play size={16} className="mr-2" />
+            {executing ? 'Executing...' : 'Execute Workflow'}
+          </button>
+        </div>
       </div>
       
-      {/* Status display */}
-      {execution.status !== 'idle' && (
-        <div className={`p-3 rounded-md mt-2 ${
-          execution.status === 'running' ? 'bg-blue-50 border border-blue-200' :
-          execution.status === 'completed' ? 'bg-green-50 border border-green-200' :
-          'bg-red-50 border border-red-200'
-        }`}>
-          <div className="flex items-center gap-2 mb-1">
-            {execution.status === 'running' && <Clock className="text-blue-500" size={18} />}
-            {execution.status === 'completed' && <CheckCircle className="text-green-500" size={18} />}
-            {execution.status === 'error' && <AlertCircle className="text-red-500" size={18} />}
-            
-            <span className={`font-medium ${
-              execution.status === 'running' ? 'text-blue-700' :
-              execution.status === 'completed' ? 'text-green-700' :
-              'text-red-700'
-            }`}>
-              {execution.status === 'running' ? 'Executing workflow...' :
-               execution.status === 'completed' ? 'Execution completed' :
-               'Execution failed'}
-            </span>
-          </div>
-          
-          {execution.message && (
-            <p className="text-sm text-gray-600 ml-6">{execution.message}</p>
-          )}
-          
-          {executionTime && (
-            <p className="text-sm text-gray-600 ml-6 mt-1">
-              Execution time: {executionTime} seconds
-            </p>
-          )}
-          
-          {execution.status === 'completed' && (
-            <div className="flex gap-3 ml-6 mt-2">
-              <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded">
-                {success} successful
-              </span>
-              {failure > 0 && (
-                <span className="text-sm bg-red-100 text-red-800 px-2 py-1 rounded">
-                  {failure} failed
-                </span>
-              )}
-            </div>
-          )}
+      {showSettings && (
+        <div className="mt-4">
+          <APIKeyManager />
         </div>
       )}
     </div>

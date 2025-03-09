@@ -1,3 +1,5 @@
+// src/store/workflowStore.ts
+
 import { create } from "zustand";
 import { client, databases, Role, Permission, Account, ID, Query } from "../lib/appwrite";
 import { debounce } from "lodash";
@@ -17,6 +19,10 @@ interface WorkflowState {
   history: { nodes: any[], edges: any[] }[];
   historyIndex: number;
   workflowResults: Record<string, any>;
+  apiKeys: {
+    openai: string | null;
+    claude: string | null;
+  };
   setNodes: (nodes: any[]) => void;
   setEdges: (edges: any[]) => void;
   deleteNode: (nodeId: string) => void;
@@ -29,6 +35,8 @@ interface WorkflowState {
   saveWorkflow: (name: string) => Promise<void>;
   loadWorkflows: () => Promise<void>;
   fetchWorkflowResults: (workflowExecutionId: string) => Promise<void>;
+  updateAPIKey: (provider: string, key: string) => Promise<void>;
+  setWorkflowName: (name: string) => void;
 }
 
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
@@ -40,6 +48,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   history: [],
   historyIndex: -1,
   workflowResults: {},
+  apiKeys: {
+    openai: null,
+    claude: null
+  },
+
+  setWorkflowName: (name) => {
+    set({ workflowName: name });
+  },
 
   saveToHistory: () => {
     const { nodes, edges, history, historyIndex } = get();
@@ -125,6 +141,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       const user = await account.get();
       set({ user: { id: user.$id, email: user.email }, history: [], historyIndex: -1 });
       await get().loadWorkflows();
+      await get().loadAPIKeys();
     } catch (error) {
       console.error("Login error:", error);
       toast.error("Login failed. Please check your credentials.");
@@ -135,10 +152,92 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     try {
       const account = new Account(client);
       await account.deleteSession("current");
-      set({ user: null, nodes: [], edges: [], currentWorkflowId: null, workflowName: "My Workflow", history: [], historyIndex: -1 });
+      set({ 
+        user: null, 
+        nodes: [], 
+        edges: [], 
+        currentWorkflowId: null, 
+        workflowName: "My Workflow", 
+        history: [], 
+        historyIndex: -1,
+        apiKeys: { openai: null, claude: null }
+      });
       toast.success("Logged out successfully!");
     } catch (error) {
       console.error("Logout error:", error);
+    }
+  },
+
+  updateAPIKey: async (provider, key) => {
+    const { user, apiKeys } = get();
+    if (!user) return;
+
+    try {
+      // First check if there's an existing key record
+      const response = await databases.listDocuments(
+        "67b4eba50033539bd242",
+        "api_keys_collection", // You'll need to create this collection
+        [Query.equal("userId", user.id)]
+      );
+
+      const newApiKeys = { ...apiKeys, [provider]: key };
+      set({ apiKeys: newApiKeys });
+
+      if (response.documents.length > 0) {
+        // Update existing key record
+        await databases.updateDocument(
+          "67b4eba50033539bd242",
+          "api_keys_collection",
+          response.documents[0].$id,
+          { [provider]: key, lastUpdated: new Date().toISOString() }
+        );
+      } else {
+        // Create a new key record
+        await databases.createDocument(
+          "67b4eba50033539bd242",
+          "api_keys_collection",
+          ID.unique(),
+          { 
+            userId: user.id, 
+            [provider]: key, 
+            created: new Date().toISOString(), 
+            lastUpdated: new Date().toISOString() 
+          },
+          [
+            Permission.read(Role.user(user.id)), 
+            Permission.update(Role.user(user.id)), 
+            Permission.delete(Role.user(user.id))
+          ]
+        );
+      }
+    } catch (error) {
+      console.error(`Error updating ${provider} API key:`, error);
+      toast.error(`Failed to save ${provider} API key`);
+    }
+  },
+
+  loadAPIKeys: async () => {
+    const { user } = get();
+    if (!user) return;
+
+    try {
+      const response = await databases.listDocuments(
+        "67b4eba50033539bd242",
+        "api_keys_collection", // You'll need to create this collection
+        [Query.equal("userId", user.id)]
+      );
+
+      if (response.documents.length > 0) {
+        const keyData = response.documents[0];
+        set({
+          apiKeys: {
+            openai: keyData.openai || null,
+            claude: keyData.claude || null
+          }
+        });
+      }
+    } catch (error) {
+      console.error("Error loading API keys:", error);
     }
   },
 
