@@ -16,7 +16,7 @@ const Sidebar = () => {
           onClick={() => setActiveTab("dashboard")}
         >
           <LayoutDashboard className="w-5 h-5" />
-          <span>Dashboard</span>
+          <span>Main WOrkflow</span>
         </button>
 
         <button
