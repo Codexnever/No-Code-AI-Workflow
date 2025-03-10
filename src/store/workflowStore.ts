@@ -19,6 +19,7 @@ interface WorkflowState {
   history: { nodes: any[], edges: any[] }[];
   historyIndex: number;
   workflowResults: Record<string, any>;
+  loadAPIKeys: () => Promise<void>;
   apiKeys: {
     openai: string | null;
     claude: string | null;
