@@ -14,7 +14,9 @@ const WorkflowExecutionPanel: React.FC = () => {
     edges, 
     saveWorkflow, 
     workflowName, 
-    setWorkflowName 
+    setWorkflowName,
+    setNodes,
+    fetchWorkflowResults
   } = useWorkflowStore();
   
   const [showSettings, setShowSettings] = useState(false);
@@ -32,6 +34,26 @@ const WorkflowExecutionPanel: React.FC = () => {
       
       const results = await executeWorkflow(nodes, edges);
       console.log('Workflow execution results:', results);
+      
+      // Get the execution ID from the first result
+      const executionId = Object.values(results)[0]?.metadata?.workflowExecutionId;
+      
+      if (executionId) {
+        // Update nodes with execution ID for result display
+        const updatedNodes = nodes.map(node => ({
+          ...node,
+          data: {
+            ...node.data,
+            lastExecutionId: executionId
+          }
+        }));
+        
+        // Update the nodes to show the results
+        setNodes(updatedNodes);
+        
+        // Load the execution results into the store
+        await fetchWorkflowResults(executionId);
+      }
       
       toast.success('Workflow execution completed!');
     } catch (error) {

@@ -15,7 +15,7 @@ interface AIModelConfig {
 // Here we want to add api key from workflowstore not getting from below hardly 
 const openaiModels: Record<string, AIModelConfig> = {
   'gpt-4o-mini': {
-    apiKey: process.env.OPENAI_API_KEY || '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',
+    apiKey: process.env.OPENAI_API_KEY || '',
     model: 'gpt-4o-mini',
     maxTokens: 100,
     temperature: 0.7
@@ -227,8 +227,8 @@ async function storeWorkflowResult(
 ) {
   try {
     await databases.createDocument(
-      "67b4eba50033539bd242",  // Database ID
-      "67c5eb7d001f3c955715",  // Collection ID
+      process.env.DATABASE_ID,  // Database ID
+      process.env.COLLECTION_WORKFLOW_EXECUTION,  // Collection ID
       ID.unique(),
       {
         workflowExecutionId,
@@ -254,8 +254,8 @@ export async function fetchWorkflowResults(
 ): Promise<Record<string, TaskResult>> {
   try {
     const response = await databases.listDocuments(
-      "67b4eba50033539bd242",
-      "67c5eb7d001f3c955715",
+      process.env.DATABASE_ID,
+      process.env.COLLECTION_WORKFLOW_EXECUTION,
       [Query.equal("workflowExecutionId", workflowExecutionId)]
     );
 

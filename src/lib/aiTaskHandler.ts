@@ -1,5 +1,3 @@
-// src/lib/aiTaskHandler.ts
-
 import { TaskHandler, TaskConfig, TaskResult, registerTaskHandler, executeWorkflow } from './workflowExecutor';
 
 interface AITaskParameters {
@@ -7,7 +5,6 @@ interface AITaskParameters {
   model?: string;
   maxTokens?: number;
   temperature?: number;
-  // Add more AI specific parameters as needed
 }
 
 // Implementation of AI task handler

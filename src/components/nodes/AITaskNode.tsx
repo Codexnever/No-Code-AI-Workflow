@@ -2,7 +2,26 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Handle, Position, NodeProps } from "reactflow";
 import { useWorkflowStore } from "../../store/workflowStore";
-import { X, Settings, Sliders, MessageSquare, Save } from "lucide-react"; 
+import { X, Settings, Sliders, MessageSquare, Save, ChevronDown, ChevronUp } from "lucide-react"; 
+
+// Define proper types for the workflow result
+interface NodeResultData {
+  text?: string;
+  model?: string;
+  tokens?: number;
+}
+
+interface NodeResultMetadata {
+  nodeId?: string;
+  timestamp?: string;
+}
+
+interface NodeResult {
+  success: boolean;
+  data?: NodeResultData;
+  error?: string;
+  metadata?: NodeResultMetadata;
+}
 
 const AITaskNode = ({ data, id }: NodeProps) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -10,6 +29,7 @@ const AITaskNode = ({ data, id }: NodeProps) => {
   const [nodeName, setNodeName] = useState(data.label || "AI Task");
   const [showDeleteButton, setShowDeleteButton] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
+  const [showResults, setShowResults] = useState(false);
   
   // State for AI task parameters
   const [prompt, setPrompt] = useState(data.parameters?.prompt || "");
@@ -21,6 +41,16 @@ const AITaskNode = ({ data, id }: NodeProps) => {
   const setNodes = useWorkflowStore((state) => state.setNodes);
   const deleteNode = useWorkflowStore((state) => state.deleteNode);
   const nodes = useWorkflowStore((state) => state.nodes);
+  
+  // Get workflow results from store
+  const workflowResults = useWorkflowStore((state) => state.workflowResults);
+  const currentExecutionId = data.lastExecutionId || null;
+  
+  // Extract node result if available
+  const nodeResult = currentExecutionId && workflowResults[currentExecutionId] 
+    ? Object.values(workflowResults[currentExecutionId])
+      .find((result: any) => result.metadata?.nodeId === id) as NodeResult | null
+    : null;
 
   // Focus input when entering edit mode
   useEffect(() => {
@@ -56,12 +86,21 @@ const AITaskNode = ({ data, id }: NodeProps) => {
     e.stopPropagation();
     setShowSettings(!showSettings);
     setShowConfig(false);
+    setShowResults(false);
   };
   
   const toggleConfig = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowConfig(!showConfig);
     setShowSettings(false);
+    setShowResults(false);
+  };
+  
+  const toggleResults = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowResults(!showResults);
+    setShowSettings(false);
+    setShowConfig(false);
   };
   
   const saveConfig = () => {
@@ -108,14 +147,30 @@ const AITaskNode = ({ data, id }: NodeProps) => {
     setNodes(updatedNodes);
   };
 
+  // Define background color based on execution status
+  const getBgColor = () => {
+    if (!nodeResult) return "bg-white";
+    if (nodeResult.success) return "bg-white border-green-300";
+    return "bg-white border-red-300";
+  };
+
+  // Get status indicator
+  const getStatusIndicator = () => {
+    if (!nodeResult) return null;
+    if (nodeResult.success) {
+      return <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 bg-green-500 h-2 w-2 rounded-full"></div>;
+    }
+    return <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 bg-red-500 h-2 w-2 rounded-full"></div>;
+  };
+
   return (
     <div
-      className="p-4 bg-white shadow-lg border border-gray-300 rounded-xl text-center w-48 relative transition-all duration-200 hover:shadow-xl"
+      className={`p-4 shadow-lg border border-gray-300 rounded-xl text-center w-48 relative transition-all duration-200 hover:shadow-xl ${getBgColor()}`}
       onDoubleClick={handleDoubleClick}
       onMouseEnter={() => setShowDeleteButton(true)}
       onMouseLeave={() => setShowDeleteButton(false)}
     >
-      {/* Buttons: Delete, Settings, and Configure */}
+      {/* Buttons: Delete, Settings, Configure, Results */}
       {showDeleteButton && (
         <>
           <button
@@ -137,6 +192,15 @@ const AITaskNode = ({ data, id }: NodeProps) => {
           >
             <Sliders size={16} />
           </button>
+          {nodeResult && (
+            <button
+              className="absolute top-10 -left-3 bg-purple-600 text-white rounded-full p-1 hover:bg-purple-700 transition-all shadow-md"
+              onClick={toggleResults}
+              title="View Results"
+            >
+              {showResults ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+          )}
         </>
       )}
 
@@ -161,6 +225,16 @@ const AITaskNode = ({ data, id }: NodeProps) => {
         <MessageSquare size={12} className="mr-1" />
         {model}
       </div>
+
+      {/* Execution Status Indicator */}
+      {getStatusIndicator()}
+      
+      {/* Token Count (if successful execution) */}
+      {nodeResult && nodeResult.success && nodeResult.data?.tokens && (
+        <div className="mt-1 text-xs text-gray-500">
+          {nodeResult.data.tokens} tokens
+        </div>
+      )}
 
       {/* Settings Panel */}
       {showSettings && (
@@ -218,8 +292,8 @@ const AITaskNode = ({ data, id }: NodeProps) => {
               >
                 <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
                 <option value="gpt-4">GPT-4</option>
+                <option value="gpt-4o-mini">GPT-4o Mini</option>
                 <option value="claude-3">Claude 3</option>
-                <option value="llama-2">Llama 2</option>
               </select>
             </div>
             
@@ -285,6 +359,51 @@ const AITaskNode = ({ data, id }: NodeProps) => {
             >
               <Save size={12} className="mr-1" />
               Save
+            </button>
+          </div>
+        </div>
+      )}
+      
+      {/* Results Panel */}
+      {showResults && nodeResult && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute top-full left-0 mt-2 w-96 bg-white border border-gray-200 rounded-md shadow-lg p-3 z-10"
+        >
+          <h4 className="text-sm font-semibold mb-2 text-gray-700 flex justify-between">
+            <span>Execution Results</span>
+            <span className={nodeResult.success ? "text-green-600" : "text-red-600"}>
+              {nodeResult.success ? "Success" : "Failed"}
+            </span>
+          </h4>
+          
+          {nodeResult.success ? (
+            <div className="space-y-2">
+              <div className="text-xs overflow-auto max-h-48 bg-gray-50 p-2 rounded border border-gray-200 whitespace-pre-wrap">
+                {nodeResult.data?.text || "No output text"}
+              </div>
+              
+              <div className="flex justify-between text-xs text-gray-500">
+                <span>Model: {nodeResult.data?.model || "Unknown"}</span>
+                <span>Tokens: {nodeResult.data?.tokens || 0}</span>
+              </div>
+              
+              <div className="text-xs text-gray-500">
+                Executed: {new Date(nodeResult.metadata?.timestamp || "").toLocaleString()}
+              </div>
+            </div>
+          ) : (
+            <div className="text-xs text-red-600 bg-red-50 p-2 rounded border border-red-200">
+              {nodeResult.error || "Unknown error occurred"}
+            </div>
+          )}
+          
+          <div className="mt-3 pt-2 border-t border-gray-200">
+            <button
+              onClick={() => setShowResults(false)}
+              className="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded w-full"
+            >
+              Close
             </button>
           </div>
         </div>

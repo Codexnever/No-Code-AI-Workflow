@@ -66,26 +66,39 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set({ history: newHistory, historyIndex: newHistory.length - 1 });
   },
 
-  fetchWorkflowResults: async (workflowExecutionId: string) => {
-    try {
-      const response = await databases.getDocument(
-        "67b4eba50033539bd242",
-        "67b4ebad0007bf1d3f85",
-        workflowExecutionId
-      );
-  
-      if (response) {
-        set((state) => ({
-          workflowResults: {
-            ...state.workflowResults,
-            [workflowExecutionId]: response,
-          },
-        }));
-      }
-    } catch (error) {
-      console.error("Error fetching workflow results:", error);
+// Updated fetchWorkflowResults function for workflowStore.ts
+
+fetchWorkflowResults: async (workflowExecutionId: string) => {
+  try {
+    // Use the function from workflowExecutor to get all results for this execution
+    const response = await databases.listDocuments(
+      process.env.DATABASE_ID, // Database ID
+      process.env.COLLECTION_WORKFLOW_EXECUTION, // Collection for workflow results
+      [Query.equal("workflowExecutionId", workflowExecutionId)]
+    );
+
+    if (response.documents.length > 0) {
+      // Process all results from this execution
+      const results = response.documents.reduce((acc, doc) => {
+        // Parse the result JSON
+        const resultData = JSON.parse(doc.result);
+        acc[doc.nodeId] = resultData;
+        return acc;
+      }, {} as Record<string, any>);
+
+      // Store the results in the state
+      set((state) => ({
+        workflowResults: {
+          ...state.workflowResults,
+          [workflowExecutionId]: results,
+        },
+      }));
     }
-  },
+  } catch (error) {
+    console.error("Error fetching workflow results:", error);
+    toast.error("Failed to load workflow results");
+  }
+},
   
   setNodes: (newNodes) => {
     get().saveToHistory();
@@ -176,8 +189,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     try {
       // First check if there's an existing key record
       const response = await databases.listDocuments(
-        "67b4eba50033539bd242",
-        "67d9c7b7001a7a22639c", // new api collection
+        process.env.DATABASE_ID,
+        process.env.API_KEYS, // new api collection
         [Query.equal("userId", user.id)]
       );
 
@@ -187,16 +200,16 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       if (response.documents.length > 0) {
         // Update existing key record
         await databases.updateDocument(
-          "67b4eba50033539bd242",
-          "67d9c7b7001a7a22639c",
+          process.env.DATABASE_ID,
+          process.env.API_KEYS,
           response.documents[0].$id,
           { [provider]: key, lastUpdated: new Date().toISOString() }
         );
       } else {
         // Create a new key record
         await databases.createDocument(
-          "67b4eba50033539bd242",
-          "67d9c7b7001a7a22639c",
+          process.env.DATABASE_ID,
+          process.env.API_KEYS, 
           ID.unique(),
           { 
             userId: user.id, 
@@ -223,8 +236,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
     try {
       const response = await databases.listDocuments(
-        "67b4eba50033539bd242",
-        "67d9c7b7001a7a22639c", // You'll need to create this collection
+        process.env.DATABASE_ID,
+        process.env.API_KEYS, // You'll need to create this collection
         [Query.equal("userId", user.id)]
       );
 
@@ -251,9 +264,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       const serializedEdges = JSON.stringify(edges);
       const saveName = name || workflowName;
       if (currentWorkflowId) {
-        await databases.updateDocument("67b4eba50033539bd242", "67b4ebad0007bf1d3f85", currentWorkflowId, { name: saveName, nodes: serializedNodes, edges: serializedEdges, lastUpdated: new Date().toISOString() });
+        await databases.updateDocument(process.env.DATABASE_ID, process.env.MAIN_WORKFLOW_ID, currentWorkflowId, { name: saveName, nodes: serializedNodes, edges: serializedEdges, lastUpdated: new Date().toISOString() });
       } else {
-        const response = await databases.createDocument("67b4eba50033539bd242", "67b4ebad0007bf1d3f85", ID.unique(), { userId: user.id, name: saveName, nodes: serializedNodes, edges: serializedEdges, created: new Date().toISOString(), lastUpdated: new Date().toISOString() }
+        const response = await databases.createDocument(process.env.DATABASE_ID, process.env.MAIN_WORKFLOW_ID, ID.unique(), { userId: user.id, name: saveName, nodes: serializedNodes, edges: serializedEdges, created: new Date().toISOString(), lastUpdated: new Date().toISOString() }
           , [Permission.read(Role.user(user.id)), Permission.update(Role.user(user.id)), Permission.delete(Role.user(user.id))]);
         set({ currentWorkflowId: response.$id, workflowName: saveName });
       }
@@ -266,7 +279,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const { user } = get();
     if (!user) return;
     try {
-      const response = await databases.listDocuments("67b4eba50033539bd242", "67b4ebad0007bf1d3f85", [Query.equal("userId", user.id), Query.orderDesc("lastUpdated")]);
+      const response = await databases.listDocuments(process.env.DATABASE_ID, process.env.MAIN_WORKFLOW_ID, [Query.equal("userId", user.id), Query.orderDesc("lastUpdated")]);
       if (response.documents.length > 0) {
         const latestWorkflow = response.documents[0];
         set({
