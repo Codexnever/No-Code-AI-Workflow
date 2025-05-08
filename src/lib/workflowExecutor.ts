@@ -5,27 +5,24 @@ import { toast } from 'react-toastify';
 import OpenAI from 'openai';
 import { databases, ID, Permission, Role, Query } from './appwrite';
 
+// Constants for environment variables with fallbacks
+const DATABASE_ID = process.env.DATABASE_ID || '67b4eba50033539bd242';
+const WORKFLOW_EXECUTION_COLLECTION = process.env.COLLECTION_WORKFLOW_EXECUTION || '67c5eb7d001f3c955715';
+
 // OpenAI configuration with typed configuration
 interface AIModelConfig {
-  apiKey: string;
+  apiKey?: string;
   model: string;
   maxTokens?: number;
   temperature?: number;
 }
-// Here we want to add api key from workflowstore not getting from below hardly 
+
 const openaiModels: Record<string, AIModelConfig> = {
   'gpt-4o-mini': {
-    apiKey: process.env.OPENAI_API_KEY || '',
     model: 'gpt-4o-mini',
     maxTokens: 100,
     temperature: 0.7
-  },
-  // 'gpt-4': {
-  //   apiKey: process.env.OPENAI_API_KEY || '',
-  //   model: 'gpt-4',
-  //   maxTokens: 2000,
-  //   temperature: 0.7
-  // }
+  }
 };
 
 // Enhanced type definitions
@@ -51,7 +48,7 @@ export interface TaskResult {
   error?: string;
   metadata: {
     nodeId: string;
-    workflowExecutionId: string;
+    executionId: string;  // Changed from workflowExecutionId
     timestamp: string;
     taskType?: string;
   };
@@ -97,7 +94,7 @@ export class AITaskHandler implements TaskHandler {
         },
         metadata: {
           nodeId: config.type,
-          workflowExecutionId:'', // Will be set during workflow execution
+          executionId: '', // Will be set during workflow execution
           timestamp: new Date().toISOString()
         }
       };
@@ -108,7 +105,7 @@ export class AITaskHandler implements TaskHandler {
         error: error instanceof Error ? error.message : 'Unknown AI task error',
         metadata: {
           nodeId: config.type,
-          workflowExecutionId: '', // Will be set during workflow execution
+          executionId: '', // Will be set during workflow execution
           timestamp: new Date().toISOString()
         }
       };
@@ -159,9 +156,11 @@ function findStartNode(nodes: Node[], edges: Edge[]): Node | null {
 // Core Workflow Execution
 export async function executeWorkflow(
   nodes: Node[], 
-  edges: Edge[]
+  edges: Edge[],
+  options?: { openAIApiKey?: string, userId?: string }
 ): Promise<Record<string, TaskResult>> {
-  const workflowExecutionId = ID.unique();
+  const executionId = ID.unique();
+  const workflowId = ID.unique();
   const results: Record<string, TaskResult> = {};
   const startNode = findStartNode(nodes, edges);
 
@@ -170,98 +169,181 @@ export async function executeWorkflow(
     return results;
   }
 
+  if (!options?.userId) {
+    toast.error('User must be logged in to execute workflows');
+    return results;
+  }
+
+  // If OpenAI API key is provided, override in openaiModels
+  if (options?.openAIApiKey) {
+    for (const modelKey in openaiModels) {
+      openaiModels[modelKey].apiKey = options.openAIApiKey;
+    }
+  }
+
   const queue: { node: Node, dependencies: string[] }[] = [
     { node: startNode, dependencies: [] }
   ];
   const enqueued = new Set<string>([startNode.id]);
   const executed = new Set<string>();
 
-  while (queue.length > 0) {
-    const { node, dependencies } = queue.shift()!;
+  try {
+    // Create initial workflow execution record
+    await databases.createDocument(
+      DATABASE_ID,
+      WORKFLOW_EXECUTION_COLLECTION,
+      executionId,
+      {
+        workflowId,
+        executionId,
+        userId: options.userId,
+        startTime: new Date().toISOString(),
+        endTime: new Date().toISOString(),
+        status: 'running',
+        results: JSON.stringify({}),
+        summary: [],
+        totalNodes: nodes.length,
+        nodesExecuted: 0,
+        successCount: 0,
+        errorCount: 0,
+        error: '',
+        name: `Workflow Execution ${executionId}`
+      }
+    );
 
-    // Wait for dependencies to complete
-    if (!dependencies.every(depId => executed.has(depId))) {
-      queue.push({ node, dependencies });
-      continue;
-    }
+    while (queue.length > 0) {
+      const { node, dependencies } = queue.shift()!;
 
-    // Execute the task
-    const result = await executeTask(node, results);
-    
-    // Attach workflow execution ID
-    result.metadata.workflowExecutionId = workflowExecutionId;
+      // Wait for dependencies to complete
+      if (!dependencies.every(depId => executed.has(depId))) {
+        queue.push({ node, dependencies });
+        continue;
+      }
 
-    // Store workflow result in Appwrite
-    await storeWorkflowResult(workflowExecutionId, node.id, result);
+      // Execute the task
+      const result = await executeTask(node, results);
+      result.metadata.executionId = executionId;
 
-    // Track results and executed nodes
-    results[node.id] = result;
-    executed.add(node.id);
+      // Store result in Appwrite
+      await storeWorkflowResult(node, result, executionId, options.userId, workflowId);
 
-    // Determine next nodes based on execution result
-    const condition = result.success ? 'success' : 'error';
-    const nextNodes = findNextNodes(node.id, edges, nodes, condition);
+      // Track results and executed nodes
+      results[node.id] = result;
+      executed.add(node.id);
 
-    // Queue next nodes
-    for (const nextNode of nextNodes) {
-      if (!enqueued.has(nextNode.id)) {
-        queue.push({ node: nextNode, dependencies: [node.id] });
-        enqueued.add(nextNode.id);
+      // Determine next nodes based on execution result
+      const condition = result.success ? 'success' : 'error';
+      const nextNodes = findNextNodes(node.id, edges, nodes, condition);
+
+      // Queue next nodes
+      for (const nextNode of nextNodes) {
+        if (!enqueued.has(nextNode.id)) {
+          queue.push({ node: nextNode, dependencies: [node.id] });
+          enqueued.add(nextNode.id);
+        }
       }
     }
-  }
 
-  // Notify execution completion
-  executed.size < nodes.length
-    ? toast.warning(`Only ${executed.size}/${nodes.length} nodes executed.`)
-    : toast.success('Workflow executed successfully!');
+    // Update final workflow execution status
+    const successCount = Object.values(results).filter(r => r.success).length;
+    const errorCount = Object.values(results).filter(r => !r.success).length;
+    
+    await databases.updateDocument(
+      DATABASE_ID,
+      WORKFLOW_EXECUTION_COLLECTION,
+      executionId,
+      {
+        endTime: new Date().toISOString(),
+        status: errorCount === 0 ? 'completed' : 'completed_with_errors',
+        results: JSON.stringify(results),
+        summary: Object.values(results).map(r => r.data?.text || r.error || ''),
+        nodesExecuted: executed.size,
+        successCount,
+        errorCount,
+        error: errorCount > 0 ? 'Some nodes failed to execute' : ''
+      }
+    );
+
+  } catch (error) {
+    console.error('Error in workflow execution:', error);
+    toast.error('Workflow execution failed');
+    
+    try {
+      // Update workflow status to failed
+      await databases.updateDocument(
+        DATABASE_ID,
+        WORKFLOW_EXECUTION_COLLECTION,
+        executionId,
+        {
+          endTime: new Date().toISOString(),
+          status: 'failed',
+          results: JSON.stringify(results),
+          summary: ['Workflow execution failed'],
+          nodesExecuted: executed.size,
+          successCount: Object.values(results).filter(r => r.success).length,
+          errorCount: Object.values(results).filter(r => !r.success).length + 1,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        }
+      );
+    } catch (updateError) {
+      console.error('Failed to update workflow status:', updateError);
+    }
+  }
 
   return results;
 }
 
-// Workflow Result Storage in Appwrite
 async function storeWorkflowResult(
-  workflowExecutionId: string, 
-  nodeId: string, 
-  result: TaskResult
+  node: Node,
+  result: TaskResult,
+  executionId: string,
+  userId: string,
+  workflowId: string
 ) {
   try {
+    const nodeResultId = ID.unique();
     await databases.createDocument(
-      process.env.DATABASE_ID,  // Database ID
-      process.env.COLLECTION_WORKFLOW_EXECUTION,  // Collection ID
-      ID.unique(),
+      DATABASE_ID,
+      WORKFLOW_EXECUTION_COLLECTION,
+      nodeResultId,
       {
-        workflowExecutionId,
-        nodeId,
-        result: JSON.stringify(result),
-        timestamp: new Date().toISOString()
-      },
-      [
-        Permission.read(Role.any()),
-        Permission.update(Role.any()),
-        Permission.delete(Role.any())
-      ]
+        executionId,
+        workflowId,
+        userId,
+        nodeId: node.id,
+        startTime: new Date().toISOString(),
+        endTime: new Date().toISOString(),
+        status: result.success ? 'success' : 'error',
+        results: JSON.stringify(result),
+        summary: [result.data?.text || result.error || ''],
+        totalNodes: 1,
+        nodesExecuted: 1,
+        successCount: result.success ? 1 : 0,
+        errorCount: result.success ? 0 : 1,
+        error: result.error || '',
+        name: `Node ${node.id} Execution`
+      }
     );
   } catch (error) {
     console.error('Error storing workflow result:', error);
-    toast.error('Failed to store workflow result');
+    throw error;
   }
 }
 
 // Retrieve Workflow Results
 export async function fetchWorkflowResults(
-  workflowExecutionId: string
+  executionId: string  // Changed from workflowExecutionId
 ): Promise<Record<string, TaskResult>> {
   try {
     const response = await databases.listDocuments(
-      process.env.DATABASE_ID,
-      process.env.COLLECTION_WORKFLOW_EXECUTION,
-      [Query.equal("workflowExecutionId", workflowExecutionId)]
+      DATABASE_ID,
+      WORKFLOW_EXECUTION_COLLECTION,
+      [Query.equal("executionId", executionId)]  // Changed from workflowExecutionId
     );
 
     return response.documents.reduce((acc, doc) => {
-      const result = JSON.parse(doc.result);
-      acc[result.metadata.nodeId] = result;
+      const result = JSON.parse(doc.results);  // Changed from result to results to match schema
+      acc[doc.nodeId] = result;
       return acc;
     }, {} as Record<string, TaskResult>);
   } catch (error) {
@@ -295,7 +377,7 @@ async function executeTask(
       error: `No handler for task type: ${nodeType}`,
       metadata: {
         nodeId: node.id,
-        workflowExecutionId: '',
+        executionId: '',
         timestamp: new Date().toISOString()
       }
     };

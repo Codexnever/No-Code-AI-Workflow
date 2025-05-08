@@ -20,7 +20,7 @@ export class AITaskHandler implements TaskHandler {
       const prompt = params.prompt || 'Default prompt';
       
       // Extract model configuration
-      const model = params.model || 'gpt-3.5-turbo';
+      const model = params.model || 'gpt-4o-mini';
       const maxTokens = params.maxTokens || 100;
       const temperature = params.temperature || 0.7;
       
@@ -29,7 +29,7 @@ export class AITaskHandler implements TaskHandler {
       console.log(`Parameters: maxTokens=${maxTokens}, temperature=${temperature}`);
       
       // Simulated API call
-      return await simulateAIAPICall(prompt, model, maxTokens, temperature);
+      return await simulateAIAPICall(prompt, model, maxTokens, temperature, config.nodeId);
     } catch (error) {
       console.error('AI Task execution error:', error);
       return {
@@ -38,9 +38,9 @@ export class AITaskHandler implements TaskHandler {
         metadata: { 
           taskType: 'aiTask', 
           timestamp: new Date().toISOString(),
-          nodeId: config.nodeId, // nodeId: string;
-          workflowExecutionId:'metadata.workflowExecutionId' 
-        }  // ✅ Added metadata
+          nodeId: config.nodeId,
+          executionId: '' // Will be set during workflow execution
+        }
       };
     }
   }
@@ -51,7 +51,8 @@ async function simulateAIAPICall(
   prompt: string,
   model: string,
   maxTokens: number,
-  temperature: number
+  temperature: number,
+  nodeId: string
 ): Promise<TaskResult> {
   await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate processing time
   
@@ -68,8 +69,8 @@ async function simulateAIAPICall(
       metadata: { 
         taskType: 'aiTask', 
         timestamp: new Date().toISOString(),
-        nodeId: 'TaskConfig.nodeId', // Replace with actual nodeId
-        workflowExecutionId: 'exampleWorkflowExecutionId' // Replace with actual workflowExecutionId
+        nodeId: nodeId,
+        executionId: '' // Will be set during workflow execution
       }
     };
   } else {
@@ -79,13 +80,12 @@ async function simulateAIAPICall(
       metadata: { 
         taskType: 'aiTask', 
         timestamp: new Date().toISOString(),
-        nodeId: 'TaskConfig.nodeId', // Replace with actual nodeId
-        workflowExecutionId: 'exampleWorkflowExecutionId' // Replace with actual workflowExecutionId
+        nodeId: nodeId,
+        executionId: '' // Will be set during workflow execution
       }
     };
   }
 }
-
 
 // Register the AI task handler
 registerTaskHandler('aiTask', new AITaskHandler());

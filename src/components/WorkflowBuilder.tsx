@@ -8,23 +8,23 @@ import ReactFlow, {
   Controls, 
   MiniMap, 
   Connection, 
-  Node, 
+  Node,
   applyNodeChanges,
   NodeChange,
   Panel,
   Edge,
-  EdgeTypes
+  EdgeTypes,
+  NodeTypes
 } from "reactflow";
 import "reactflow/dist/style.css";
 import AITaskNode from "../components/nodes/AITaskNode";
 import ConditionalEdge from "../components/ConditionalEdge";
-// import AiNode from "./nodes/AiNode";
 import { useWorkflowStore } from "../store/workflowStore";
 import { Undo2, Redo2, Save } from "lucide-react";
 import { toast } from 'react-toastify';
 import WorkflowExecutionPanel from "./WorkflowExecutionPanel";
 
-const nodeTypes = { aiTask: AITaskNode };
+const nodeTypes: NodeTypes = { aiTask: AITaskNode };
 const edgeTypes: EdgeTypes = { conditional: ConditionalEdge };
 
 const WorkflowBuilder: React.FC = () => {
@@ -45,7 +45,6 @@ const WorkflowBuilder: React.FC = () => {
 
   useEffect(() => {
     if (user) {
-      toast.success("User logged in, loading workflows...");
       loadWorkflows();
     }
   }, [user, loadWorkflows]);
@@ -72,114 +71,88 @@ const WorkflowBuilder: React.FC = () => {
     };
   }, [undo, redo, user]);
 
-  const onConnect = useCallback((connection: Connection) => {
-    if (!connection.source || !connection.target) return; // Ensure source & target exist
-  
-    const newEdge: Edge = {
-      id: `edge-${Date.now()}`,
-      type: 'conditional',
-      data: { condition: 'always' },
-      source: connection.source as string,
-      target: connection.target as string,
-      sourceHandle: connection.sourceHandle || undefined,
-      targetHandle: connection.targetHandle || undefined
-    };
-  
-    // Fix: Call setEdges directly with the new array instead of passing a function
-    setEdges([...edges, newEdge]);
-  }, [setEdges, edges]);
-
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      // Fix: Call setNodes directly with the result of applyNodeChanges
-      setNodes(applyNodeChanges(changes, nodes));
+      const updatedNodes = applyNodeChanges(changes, nodes);
+      setNodes(updatedNodes);
     },
-    [setNodes, nodes]
+    [nodes, setNodes]
   );
 
-  const handleDrop = (event: React.DragEvent) => {
-    event.preventDefault();
-    const nodeType = event.dataTransfer.getData("application/reactflow");
-    if (!nodeType) return;
-  
-    const reactFlowBounds = flowWrapperRef.current?.getBoundingClientRect();
-    const position = reactFlowBounds
-      ? { x: event.clientX - reactFlowBounds.left - 75, y: event.clientY - reactFlowBounds.top - 20 }
-      : { x: event.clientX - 200, y: event.clientY - 50 };
-  
-    const newNode: Node = {
-      id: `node-${Date.now()}`,
-      type: nodeType,
-      position,
-      data: { 
-        label: "AI Task Node",
-        parameters: {
-          prompt: "",
-          model: "gpt-4o-mini",
-          maxTokens: 100,
-          temperature: 0.7
-        }
-      },
-      draggable: true,
-    };
-  
-    // Fix: Call setNodes directly with the new array instead of passing a function
-    setNodes([...nodes, newNode]);
-  };
+  const onConnect = useCallback(
+    (params: Connection) => {
+      const newEdge = addEdge(params, edges);
+      setEdges(newEdge);
+    },
+    [edges, setEdges]
+  );
 
-  const handleManualSave = () => {
-    saveWorkflow(workflowName);
-  };
+  const handleDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+
+      const nodeType = event.dataTransfer.getData('application/reactflow');
+      if (!nodeType) return;
+
+      const position = flowWrapperRef.current?.getBoundingClientRect();
+      if (!position) return;
+
+      const newNode: Node = {
+        id: `node-${Date.now()}`,
+        type: nodeType,
+        position: {
+          x: event.clientX - position.left - 75,
+          y: event.clientY - position.top
+        },
+        data: { label: `AI Task`, parameters: { prompt: "", model: "gpt-4", maxTokens: 100 } }
+      };
+
+      setNodes([...nodes, newNode]);
+    },
+    [nodes, setNodes]
+  );
+
+  if (!user) return null;
 
   return (
-    <div className="flex w-full h-screen">
-      {/* <AiNode /> */}
-      <div className="flex-grow flex flex-col">
-        {user && <WorkflowExecutionPanel />}
-        <div
-          ref={flowWrapperRef}
-          className="flex-grow w-full h-screen bg-gray-200 relative"
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={handleDrop}
+    <div className="h-screen flex flex-col">
+      <WorkflowExecutionPanel />
+      <div 
+        ref={flowWrapperRef}
+        className="flex-1 bg-gray-50"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={handleDrop}
+      >
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onConnect={onConnect}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          defaultEdgeOptions={{ type: 'conditional' }}
+          fitView
         >
-          <ReactFlow 
-            nodes={nodes} 
-            edges={edges} 
-            onNodesChange={onNodesChange} 
-            onConnect={onConnect} 
-            fitView 
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            defaultEdgeOptions={{ type: 'conditional' }}
-          >
-            <Panel position="top-right" className="bg-white shadow-md rounded-md p-2 flex gap-2">
-              <button
-                onClick={undo}
-                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md text-gray-700 transition-colors"
-                title="Undo (Ctrl+Z)"
-              >
-                <Undo2 size={18} />
-              </button>
-              <button
-                onClick={redo}
-                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md text-gray-700 transition-colors"
-                title="Redo (Ctrl+Y or Ctrl+Shift+Z)"
-              >
-                <Redo2 size={18} />
-              </button>
-              <button
-                onClick={handleManualSave}
-                className="p-2 bg-blue-100 hover:bg-blue-200 rounded-md text-blue-700 transition-colors"
-                title="Save Workflow"
-              >
-                <Save size={18} />
-              </button>
-            </Panel>
-            <MiniMap />
-            <Controls />
-            <Background />
-          </ReactFlow>
-        </div>
+          <Background />
+          <Controls />
+          <MiniMap />
+          <Panel position="top-right" className="bg-white shadow-md rounded-md p-2 flex gap-2">
+            <button
+              onClick={undo}
+              className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md text-gray-700 transition-colors"
+              title="Undo (Ctrl+Z)"
+            >
+              <Undo2 size={18} />
+            </button>
+            <button
+              onClick={redo}
+              className="p-2 bg-gray-100 hover:bg-gray-200 rounded-md text-gray-700 transition-colors"
+              title="Redo (Ctrl+Y)"
+            >
+              <Redo2 size={18} />
+            </button>
+          </Panel>
+        </ReactFlow>
       </div>
     </div>
   );

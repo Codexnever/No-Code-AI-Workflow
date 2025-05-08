@@ -293,7 +293,6 @@ const AITaskNode = ({ data, id }: NodeProps) => {
                 <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
                 <option value="gpt-4">GPT-4</option>
                 <option value="gpt-4o-mini">GPT-4o Mini</option>
-                <option value="claude-3">Claude 3</option>
               </select>
             </div>
             

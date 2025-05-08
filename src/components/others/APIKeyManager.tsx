@@ -12,16 +12,12 @@ const APIKeyManager: React.FC = () => {
     updateAPIKey, 
     user 
   } = useWorkflowStore();
-  
   const [openaiKey, setOpenaiKey] = useState('');
-  const [claudeKey, setClaudeKey] = useState('');
   const [showOpenAIKey, setShowOpenAIKey] = useState(false);
-  const [showClaudeKey, setShowClaudeKey] = useState(false);
 
   useEffect(() => {
     if (apiKeys) {
       setOpenaiKey(apiKeys.openai || '');
-      setClaudeKey(apiKeys.claude || '');
     }
   }, [apiKeys]);
 
@@ -32,7 +28,6 @@ const APIKeyManager: React.FC = () => {
     }
 
     updateAPIKey('openai', openaiKey);
-    updateAPIKey('claude', claudeKey);
     toast.success('API keys saved successfully');
   };
 
@@ -73,24 +68,7 @@ const APIKeyManager: React.FC = () => {
         </div>
         
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Claude API Key
-          </label>
-          <div className="relative">
-            <input
-              type={showClaudeKey ? "text" : "password"}
-              value={claudeKey}
-              onChange={(e) => setClaudeKey(e.target.value)}
-              placeholder="sk-ant-..."
-              className="w-full text-sm border border-gray-300 rounded px-3 py-2 pr-10 focus:ring-2 focus:ring-blue-300 focus:border-blue-300"
-            />
-            <button 
-              onClick={() => setShowClaudeKey(!showClaudeKey)}
-              className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500 hover:text-gray-700"
-            >
-              {showClaudeKey ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
-          </div>
+         
         </div>
       </div>
       

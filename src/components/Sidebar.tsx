@@ -1,78 +1,69 @@
 "use client";
 import { useState } from "react";
-import { LayoutDashboard, Settings, Box } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { LayoutDashboard, Settings, Box, LogOut } from "lucide-react";
+import { motion } from "framer-motion";
 import AiNode from "./nodes/AiNode";
-import Login from "./Login";
+import { useWorkflowStore } from "../store/workflowStore";
 
 const Sidebar = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
+  const { user, logout } = useWorkflowStore();
+
+  if (!user) return null;
 
   return (
-    <div className="flex h-screen">
-      {/* Sidebar */}
-      <div className="w-60 bg-gray-900 text-white flex flex-col p-4">
-        <h1 className="text-xl font-bold mb-6">AI Workflow</h1>
-        <nav className="flex flex-col space-y-4">
-          <button
-            className={`flex items-center space-x-2 p-2 rounded-lg ${
-              activeTab === "dashboard" ? "bg-gray-700" : "hover:bg-gray-800"
-            }`}
-            onClick={() => setActiveTab("dashboard")}
-          >
-            <LayoutDashboard className="w-5 h-5" />
-            <span>Main Workflow</span>
-          </button>
-
-          <button
-            className={`flex items-center space-x-2 p-2 rounded-lg ${
-              activeTab === "login" ? "bg-gray-700" : "hover:bg-gray-800"
-            }`}
-            onClick={() => setActiveTab("login")}
-          >
-            <Box className="w-5 h-5" />
-            <span>Login</span>
-          </button>
-
-          <button
-            className={`flex items-center space-x-2 p-2 rounded-lg ${
-              activeTab === "settings" ? "bg-gray-700" : "hover:bg-gray-800"
-            }`}
-            onClick={() => setActiveTab("settings")}
-          >
-            <Settings className="w-5 h-5" />
-            <span>Settings</span>
-          </button>
-        </nav>
+    <div className="fixed left-0 top-0 h-screen w-60 bg-gray-900 text-white flex flex-col p-4 z-10">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-xl font-bold">AI Workflow</h1>
+        <button
+          onClick={logout}
+          className="p-2 hover:bg-gray-800 rounded-lg"
+          title="Logout"
+        >
+          <LogOut size={18} />
+        </button>
       </div>
 
-      {/* Content Area with Animation */}
-      <div className="flex-1 p-4">
-        <AnimatePresence mode="wait">
-          {activeTab === "dashboard" && (
-            <motion.div
-              key="dashboard"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              transition={{ duration: 0.3 }}
-            >
-              <AiNode />
-            </motion.div>
-          )}
-          {activeTab === "login" && (
-            <motion.div
-              key="login"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              transition={{ duration: 0.3 }}
-            >
-              <Login />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+      <nav className="flex flex-col space-y-4">
+        <button
+          className={`flex items-center space-x-2 p-2 rounded-lg ${
+            activeTab === "dashboard" ? "bg-gray-700" : "hover:bg-gray-800"
+          }`}
+          onClick={() => setActiveTab("dashboard")}
+        >
+          <LayoutDashboard className="w-5 h-5" />
+          <span>Main Workflow</span>
+        </button>
+
+        <button
+          className={`flex items-center space-x-2 p-2 rounded-lg ${
+            activeTab === "aiNodes" ? "bg-gray-700" : "hover:bg-gray-800"
+          }`}
+          onClick={() => setActiveTab("aiNodes")}
+        >
+          <Box className="w-5 h-5" />
+          <span>AI Nodes</span>
+        </button>
+
+        <button
+          className={`flex items-center space-x-2 p-2 rounded-lg ${
+            activeTab === "settings" ? "bg-gray-700" : "hover:bg-gray-800"
+          }`}
+          onClick={() => setActiveTab("settings")}
+        >
+          <Settings className="w-5 h-5" />
+          <span>Settings</span>
+        </button>
+      </nav>
+
+      {activeTab === "aiNodes" && (
+        <div className="mt-6">
+          <h2 className="text-sm font-semibold mb-3 text-gray-400">Available Nodes</h2>
+          <div className="space-y-2">
+            <AiNode />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
