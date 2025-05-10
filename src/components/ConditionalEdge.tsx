@@ -1,3 +1,19 @@
+/**
+ * @fileoverview Conditional Edge Component
+ * This component renders custom edges between nodes in the workflow graph.
+ * It supports different visual styles based on condition types (success, error, always).
+ * 
+ * Key features:
+ * - Custom edge styling
+ * - Condition-based coloring
+ * - Interactive edge labels
+ * - Path calculation and rendering
+ * 
+ * @module ConditionalEdge
+ * @requires ReactFlow
+ * @requires workflowStore
+ */
+
 import React, { useState, useRef, useEffect } from "react";
 import { EdgeProps, getBezierPath } from "reactflow";
 import { useWorkflowStore } from "../store/workflowStore";

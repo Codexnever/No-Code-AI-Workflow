@@ -1,9 +1,26 @@
-// src/components/WorkflowExecutionPanel.tsx
+/**
+ * @fileoverview Workflow Execution Control Panel
+ * This component provides the main control interface for executing workflows.
+ * It manages workflow execution state, settings display, and execution feedback.
+ * 
+ * Key features:
+ * - Workflow execution control
+ * - Settings panel toggle
+ * - API key management integration
+ * - Real-time execution feedback
+ * - Error handling and user notifications
+ * 
+ * @module WorkflowExecutionPanel
+ * @requires workflowExecutor
+ * @requires workflowStore
+ * @requires APIKeyManager
+ */
+
 "use client";
 import React, { useState } from 'react';
 import { executeWorkflow } from '../lib/workflowExecutor';
 import { useWorkflowStore } from '../store/workflowStore';
-import { Play, Save, Settings, User } from 'lucide-react';
+import { Play, Settings } from 'lucide-react';
 import { toast } from 'react-toastify';
 import APIKeyManager from './others/APIKeyManager';
 
@@ -11,14 +28,12 @@ const WorkflowExecutionPanel: React.FC = () => {
   const { 
     nodes, 
     edges, 
-    saveWorkflow, 
-    workflowName, 
-    setWorkflowName,
     setNodes,
     fetchWorkflowResults,
     apiKeys,
     user,
-    logout
+    workflowName,
+    setWorkflowName
   } = useWorkflowStore();
   
   const [showSettings, setShowSettings] = useState(false);
@@ -45,13 +60,23 @@ const WorkflowExecutionPanel: React.FC = () => {
         userId: user?.id 
       });
       
-      console.log('Workflow execution results:', results);
-      
-      if (Object.keys(results).length > 0) {
-        const firstResultId = Object.values(results)[0]?.metadata?.executionId;
-        if (firstResultId) {
-          await fetchWorkflowResults(firstResultId);
-        }
+      // Update nodes with execution results and lastExecutionId
+      const firstResultId = Object.values(results)[0]?.metadata?.executionId;
+      if (firstResultId) {
+        // First fetch the results
+        await fetchWorkflowResults(firstResultId);
+        
+        // Then update the nodes with the execution ID
+        const updatedNodes = nodes.map(node => ({
+          ...node,
+          data: {
+            ...node.data,
+            lastExecutionId: firstResultId
+          }
+        }));
+        
+        setNodes(updatedNodes);
+        toast.success('Workflow execution completed');
       }
     } catch (error) {
       console.error('Error executing workflow:', error);
@@ -61,32 +86,17 @@ const WorkflowExecutionPanel: React.FC = () => {
     }
   };
 
-  const handleSave = () => {
-    saveWorkflow(workflowName);
-    toast.success('Workflow saved successfully!');
-  };
-
   return (
     <div className="bg-white border-b border-gray-200 px-4 py-2">
       <div className="flex items-center justify-between max-w-[1200px] mx-auto">
         <div className="flex items-center space-x-4">
-          <input
-            type="text"
-            value={workflowName}
-            onChange={(e) => setWorkflowName(e.target.value)}
-            className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Workflow Name"
-          />
-          <button
-            onClick={handleSave}
-            className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded text-sm flex items-center"
-          >
-            <Save size={14} className="mr-1.5" />
-            Save
-          </button>
-        </div>
-        
-        <div className="flex items-center space-x-3">
+      <input
+        type="text"
+        value={workflowName}
+        onChange={(e) => setWorkflowName(e.target.value)}
+        placeholder="Enter workflow name..."
+        className="text-lg font-semibold focus:ring-0 focus:outline-none bg-transparent text-gray-800 flex-1 border 2px gray"
+      />
           <button
             onClick={() => setShowSettings(!showSettings)}
             className="p-1.5 hover:bg-gray-100 rounded text-gray-600"
@@ -107,6 +117,8 @@ const WorkflowExecutionPanel: React.FC = () => {
             <Play size={14} className="mr-1.5" />
             {executing ? 'Executing...' : 'Execute Workflow'}
           </button>
+           <div className="flex items-center space-x-4 p-4 bg-white shadow-sm">
+    </div>
         </div>
       </div>
       

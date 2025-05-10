@@ -1,15 +1,40 @@
-// src/lib/workflowExecutor.ts
+/**
+ * @fileoverview Workflow Execution Engine
+ * This module provides the core functionality for executing AI workflow tasks.
+ * It handles task scheduling, execution, result management, and persistence.
+ * 
+ * Key features:
+ * - Workflow execution with dependency management
+ * - Task result persistence using Appwrite
+ * - Support for conditional flow based on task results
+ * - OpenAI integration for AI tasks
+ * 
+ * @module workflowExecutor
+ * @requires reactflow
+ * @requires openai
+ * @requires appwrite
+ */
 
 import { Node, Edge } from 'reactflow';
 import { toast } from 'react-toastify';
-import OpenAI from 'openai';
-import { databases, ID, Permission, Role, Query } from './appwrite';
+import { databases, ID, Permission, Role, Query, DATABASE_ID } from './appwrite';
+import { AITaskHandler } from './aiTaskHandler';
 
-// Constants for environment variables with fallbacks
-const DATABASE_ID = process.env.DATABASE_ID || '67b4eba50033539bd242';
-const WORKFLOW_EXECUTION_COLLECTION = process.env.COLLECTION_WORKFLOW_EXECUTION || '67c5eb7d001f3c955715';
+// Constants for environment variables
+if (!process.env.NEXT_PUBLIC_WORKFLOW_EXECUTION_COLLECTION_ID) {
+  throw new Error('Workflow execution collection ID is not configured');
+}
+const WORKFLOW_EXECUTION_COLLECTION = process.env.NEXT_PUBLIC_WORKFLOW_EXECUTION_COLLECTION_ID;
 
-// OpenAI configuration with typed configuration
+
+/**
+ * Configuration interface for AI models
+ * @interface AIModelConfig
+ * @property {string} [apiKey] - Optional API key for the model
+ * @property {string} model - The model identifier
+ * @property {number} [maxTokens] - Maximum tokens for model output
+ * @property {number} [temperature] - Temperature parameter for response randomness
+ */
 interface AIModelConfig {
   apiKey?: string;
   model: string;
@@ -17,18 +42,20 @@ interface AIModelConfig {
   temperature?: number;
 }
 
-const openaiModels: Record<string, AIModelConfig> = {
-  'gpt-4o-mini': {
-    model: 'gpt-4o-mini',
-    maxTokens: 100,
-    temperature: 0.7
-  }
-};
-
-// Enhanced type definitions
+// Task handler configuration and types
+/**
+ * Configuration for a task in the workflow
+ * @interface TaskConfig
+ * @property {string} type - The type of task (e.g., 'aiTask')
+ * @property {string} nodeId - Unique identifier for the node
+ * @property {Object} parameters - Task-specific parameters
+ * @property {string} parameters.prompt - Input prompt for the AI model
+ * @property {string} parameters.model - Selected AI model
+ * @property {number} [parameters.maxTokens] - Maximum tokens for response
+ * @property {number} [parameters.temperature] - Temperature for response randomness
+ */
 export interface TaskConfig {
   type: string;
-  
   nodeId: string;
   parameters: {
     prompt: string;
@@ -38,6 +65,21 @@ export interface TaskConfig {
   };
 }
 
+/**
+ * Result of a task execution
+ * @interface TaskResult
+ * @property {boolean} success - Whether the task executed successfully
+ * @property {Object} [data] - Result data for successful executions
+ * @property {string} data.text - Generated text response
+ * @property {number} data.tokens - Number of tokens used
+ * @property {string} data.model - Model used for generation
+ * @property {string} [error] - Error message if task failed
+ * @property {Object} metadata - Execution metadata
+ * @property {string} metadata.nodeId - ID of the executed node
+ * @property {string} metadata.executionId - Unique execution identifier
+ * @property {string} metadata.timestamp - Execution timestamp
+ * @property {string} [metadata.taskType] - Type of task executed
+ */
 export interface TaskResult {
   success: boolean;
   data?: {
@@ -48,89 +90,39 @@ export interface TaskResult {
   error?: string;
   metadata: {
     nodeId: string;
-    executionId: string;  // Changed from workflowExecutionId
+    executionId: string;
     timestamp: string;
     taskType?: string;
   };
 }
 
+/**
+ * Interface for task handlers that can execute workflow tasks
+ * @interface TaskHandler
+ * @property {Function} execute - Function to execute the task
+ * @param {TaskConfig} config - Configuration for the task
+ * @param {Record<string, TaskResult>} [previousResults] - Results from previous tasks
+ * @returns {Promise<TaskResult>} Result of task execution
+ */
 export interface TaskHandler {
   execute: (config: TaskConfig, previousResults?: Record<string, TaskResult>) => Promise<TaskResult>;
+  options?: {
+    apiKey?: string;
+  };
 }
 
-// Enhanced AI Task Handler
-export class AITaskHandler implements TaskHandler {
-  async execute(
-    config: TaskConfig, 
-    previousResults: Record<string, TaskResult> = {}
-  ): Promise<TaskResult> {
-    try {
-      const { prompt, model, maxTokens, temperature } = config.parameters;
-      const modelConfig = openaiModels[model] || openaiModels['gpt-4o-mini'];
-
-      const openai = new OpenAI({
-        apiKey: modelConfig.apiKey,
-        dangerouslyAllowBrowser: true // Use backend in production
-      });
-
-      // Enhance prompt with context from previous nodes
-      const enhancedPrompt = this.buildContextualPrompt(prompt, previousResults);
-
-      const response = await openai.chat.completions.create({
-        model: modelConfig.model,
-        messages: [{ role: 'user', content: enhancedPrompt }],
-        max_tokens: maxTokens || modelConfig.maxTokens,
-        temperature: temperature || modelConfig.temperature
-      });
-
-      const aiResponse = response.choices[0].message.content || '';
-
-      return {
-        success: true,
-        data: {
-          text: aiResponse,
-          tokens: response.usage?.total_tokens || 0,
-          model: model
-        },
-        metadata: {
-          nodeId: config.type,
-          executionId: '', // Will be set during workflow execution
-          timestamp: new Date().toISOString()
-        }
-      };
-    } catch (error) {
-      console.error('AI Task execution error:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown AI task error',
-        metadata: {
-          nodeId: config.type,
-          executionId: '', // Will be set during workflow execution
-          timestamp: new Date().toISOString()
-        }
-      };
-    }
-  }
-
-  private buildContextualPrompt(
-    originalPrompt: string, 
-    previousResults: Record<string, TaskResult>
-  ): string {
-    const contextParts = Object.entries(previousResults)
-      .filter(([_, result]) => result.success)
-      .map(([nodeId, result]) => 
-        `Context from node ${nodeId}: ${result.data?.text || 'No detailed context'}`
-      );
-
-    return [
-      ...contextParts,
-      'Current task prompt:',
-      originalPrompt
-    ].join('\n\n');
-  }
-}
+// AI Task Handler implementation moved to aiTaskHandler.ts
 
 // Workflow Execution Utilities
+/**
+ * Finds the next nodes to execute based on current node and execution condition
+ * @function findNextNodes
+ * @param {string} nodeId - ID of the current node
+ * @param {Edge[]} edges - All edges in the workflow
+ * @param {Node[]} nodes - All nodes in the workflow
+ * @param {'success' | 'error' | 'always'} condition - Execution condition
+ * @returns {Node[]} Array of nodes that should be executed next
+ */
 function findNextNodes(
   nodeId: string, 
   edges: Edge[], 
@@ -147,6 +139,13 @@ function findNextNodes(
   return nodes.filter(node => nextNodeIds.includes(node.id));
 }
 
+/**
+ * Finds the starting node of the workflow (node with no incoming edges)
+ * @function findStartNode
+ * @param {Node[]} nodes - All nodes in the workflow
+ * @param {Edge[]} edges - All edges in the workflow
+ * @returns {Node | null} Starting node or null if none found
+ */
 function findStartNode(nodes: Node[], edges: Edge[]): Node | null {
   const nodesWithIncomingEdges = new Set(edges.map(edge => edge.target));
   const startNodes = nodes.filter(node => !nodesWithIncomingEdges.has(node.id));
@@ -154,6 +153,18 @@ function findStartNode(nodes: Node[], edges: Edge[]): Node | null {
 }
 
 // Core Workflow Execution
+/**
+ * Executes the entire workflow, managing node execution order and dependencies
+ * @async
+ * @function executeWorkflow
+ * @param {Node[]} nodes - All nodes in the workflow
+ * @param {Edge[]} edges - All edges connecting the nodes
+ * @param {Object} [options] - Execution options
+ * @param {string} [options.openAIApiKey] - OpenAI API key for AI tasks
+ * @param {string} [options.userId] - ID of user executing the workflow
+ * @returns {Promise<Record<string, TaskResult>>} Results of all executed tasks
+ * @throws {Error} If workflow execution fails
+ */
 export async function executeWorkflow(
   nodes: Node[], 
   edges: Edge[],
@@ -173,12 +184,9 @@ export async function executeWorkflow(
     toast.error('User must be logged in to execute workflows');
     return results;
   }
-
-  // If OpenAI API key is provided, override in openaiModels
+  // If OpenAI API key is provided, update the AI task handler
   if (options?.openAIApiKey) {
-    for (const modelKey in openaiModels) {
-      openaiModels[modelKey].apiKey = options.openAIApiKey;
-    }
+    updateAITaskHandlerOptions({ apiKey: options.openAIApiKey });
   }
 
   const queue: { node: Node, dependencies: string[] }[] = [
@@ -211,10 +219,17 @@ export async function executeWorkflow(
       }
     );
 
+    // Update all nodes with this execution ID
+    nodes.forEach(node => {
+      node.data = {
+        ...node.data,
+        lastExecutionId: executionId
+      };
+    });
+
     while (queue.length > 0) {
       const { node, dependencies } = queue.shift()!;
 
-      // Wait for dependencies to complete
       if (!dependencies.every(depId => executed.has(depId))) {
         queue.push({ node, dependencies });
         continue;
@@ -223,11 +238,11 @@ export async function executeWorkflow(
       // Execute the task
       const result = await executeTask(node, results);
       result.metadata.executionId = executionId;
+      result.metadata.nodeId = node.id; 
 
       // Store result in Appwrite
       await storeWorkflowResult(node, result, executionId, options.userId, workflowId);
 
-      // Track results and executed nodes
       results[node.id] = result;
       executed.add(node.id);
 
@@ -293,6 +308,17 @@ export async function executeWorkflow(
   return results;
 }
 
+/**
+ * Stores the result of a workflow node execution in the database
+ * @async
+ * @function storeWorkflowResult
+ * @param {Node} node - Node whose result is being stored
+ * @param {TaskResult} result - Result of the node execution
+ * @param {string} executionId - Unique identifier for this execution
+ * @param {string} userId - ID of user who executed the workflow
+ * @param {string} workflowId - ID of the workflow being executed
+ * @throws {Error} If storing the result fails
+ */
 async function storeWorkflowResult(
   node: Node,
   result: TaskResult,
@@ -331,8 +357,16 @@ async function storeWorkflowResult(
 }
 
 // Retrieve Workflow Results
+/**
+ * Retrieves the results of a workflow execution from the database
+ * @async
+ * @function fetchWorkflowResults
+ * @param {string} executionId - ID of the workflow execution to fetch
+ * @returns {Promise<Record<string, TaskResult>>} Map of node IDs to their execution results
+ * @throws {Error} If fetching results fails
+ */
 export async function fetchWorkflowResults(
-  executionId: string  // Changed from workflowExecutionId
+  executionId: string
 ): Promise<Record<string, TaskResult>> {
   try {
     const response = await databases.listDocuments(
@@ -355,19 +389,71 @@ export async function fetchWorkflowResults(
 
 // Register AI Task Handler
 const taskHandlers: Record<string, TaskHandler> = {};
+/**
+ * Registers a task handler for a specific task type
+ * @function registerTaskHandler
+ * @param {string} type - Type of task this handler can execute
+ * @param {TaskHandler} handler - Handler implementation
+ */
 export function registerTaskHandler(type: string, handler: TaskHandler): void {
   taskHandlers[type] = handler;
 }
 
+/**
+ * Processes a prompt template by replacing variables with previous node results
+ * @function processPromptTemplate
+ * @param {string} prompt - The prompt template
+ * @param {Record<string, TaskResult>} previousResults - Results from previous nodes
+ * @returns {string} The processed prompt with variables replaced
+ */
+function processPromptTemplate(prompt: string, previousResults: Record<string, TaskResult>): string {
+  return prompt.replace(/\{\{(\w+)\}\}/g, (match, nodeId) => {
+    if (previousResults[nodeId] && previousResults[nodeId].data) {
+      return previousResults[nodeId].data?.text || '';
+    }
+    return match; // Keep the original template if no result found
+  });
+}
+
+/**
+ * Executes a single task within the workflow
+ * @async
+ * @function executeTask
+ * @param {Node} node - Node to execute
+ * @param {Record<string, TaskResult>} previousResults - Results from previous task executions
+ * @returns {Promise<TaskResult>} Result of the task execution
+ */
 async function executeTask(
   node: Node, 
   previousResults: Record<string, TaskResult>
 ): Promise<TaskResult> {
   const nodeType = node.type || 'aiTask';
+  
+  // Process the prompt template if it exists
+  let parameters = { ...node.data?.parameters };
+  if (parameters.prompt) {
+    parameters.prompt = processPromptTemplate(parameters.prompt, previousResults);
+    
+    // Add context about previous nodes
+    const incomingEdges = node.data?.targetHandle ? [] : Object.entries(previousResults)
+      .filter(([prevNodeId]) => 
+        node.id !== prevNodeId && // Don't include self
+        previousResults[prevNodeId].data?.text // Only include successful results
+      );
+    
+    if (incomingEdges.length > 0) {
+      const context = incomingEdges
+        .map(([nodeId, result]) => `Previous result:\n${result.data?.text}`)
+        .join('\n\n');
+      
+      parameters.prompt = `${context}\n\nBased on the above context:\n${parameters.prompt}`;
+    }
+  }
+  
   const taskConfig: TaskConfig = { 
     type: nodeType, 
     nodeId: node.id,
-    parameters: node.data?.parameters || {} 
+    parameters
   };
   
   const handler = taskHandlers[nodeType];
@@ -388,4 +474,11 @@ async function executeTask(
 }
 
 // Default AI Task Handler Registration
-registerTaskHandler('aiTask', new AITaskHandler());
+const aiTaskHandler = new AITaskHandler();
+
+// Update the options when registering
+export function updateAITaskHandlerOptions(options: { apiKey?: string }) {
+  aiTaskHandler.options = options;
+}
+
+registerTaskHandler('aiTask', aiTaskHandler);

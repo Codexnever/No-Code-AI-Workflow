@@ -1,22 +1,60 @@
-// src/store/workflowStore.ts
+/**
+ * @fileoverview Workflow State Management Store
+ * This module provides centralized state management for the workflow builder application.
+ * It handles workflow data, user authentication, API keys, and execution results.
+ * 
+ * Key features:
+ * - Workflow state management (nodes, edges)
+ * - User authentication
+ * - API key management
+ * - Workflow execution history
+ * - Undo/redo functionality
+ * - Auto-save capabilities
+ * 
+ * @module workflowStore
+ * @requires zustand
+ * @requires appwrite
+ */
 
 import { create } from "zustand";
-import { client, databases, Role, Permission, Account, ID, Query } from "../lib/appwrite";
+import { client, databases, Role, Permission, Account, ID, Query, DATABASE_ID } from "../lib/appwrite";
 import { debounce } from "lodash";
 import { toast } from 'react-toastify';
 import { Node, Edge } from 'reactflow';
 
-// Constants for environment variables with fallbacks
-const DATABASE_ID = process.env.DATABASE_ID || '67b4eba50033539bd242';
-const MAIN_WORKFLOW_ID = process.env.MAIN_WORKFLOW_ID || '67b4ebad0007bf1d3f85';
-const API_KEYS_COLLECTION = process.env.API_KEYS || '67d9c7b7001a7a22639c';
-const WORKFLOW_EXECUTION_COLLECTION = process.env.COLLECTION_WORKFLOW_EXECUTION || '67c5eb7d001f3c955715';
+// Constants for environment variables
+if (!process.env.NEXT_PUBLIC_MAIN_WORKFLOW_COLLECTION_ID || 
+    !process.env.NEXT_PUBLIC_API_KEYS_COLLECTION_ID || 
+    !process.env.NEXT_PUBLIC_WORKFLOW_EXECUTION_COLLECTION_ID) {
+  throw new Error('Collection environment variables are not properly configured');
+}
 
+const MAIN_WORKFLOW_COLLECTION = process.env.NEXT_PUBLIC_MAIN_WORKFLOW_COLLECTION_ID;
+const API_KEYS_COLLECTION = process.env.NEXT_PUBLIC_API_KEYS_COLLECTION_ID;
+const WORKFLOW_EXECUTION_COLLECTION = process.env.NEXT_PUBLIC_WORKFLOW_EXECUTION_COLLECTION_ID;
+
+/**
+ * Debounced save function to prevent excessive database writes
+ * @function debouncedSave
+ */
 const debouncedSave = debounce(() => {
   const { currentWorkflowId, workflowName } = useWorkflowStore.getState();
   useWorkflowStore.getState().saveWorkflow(workflowName);
 }, 2000);
 
+/**
+ * Interface defining the workflow state and available actions
+ * @interface WorkflowState
+ * @property {Object|null} user - Current authenticated user
+ * @property {Node[]} nodes - Workflow nodes
+ * @property {Edge[]} edges - Workflow edges
+ * @property {string|null} currentWorkflowId - ID of current workflow
+ * @property {string} workflowName - Name of current workflow
+ * @property {Array} history - History stack for undo/redo
+ * @property {number} historyIndex - Current position in history stack
+ * @property {Object} workflowResults - Execution results by ID
+ * @property {Object} apiKeys - API keys for different services
+ */
 interface WorkflowState {
   user: any | null;
   nodes: Node<any>[];
@@ -38,6 +76,7 @@ interface WorkflowState {
   saveToHistory: () => void;
   updateEdge: (edgeId: string, newData: any) => void;
   login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, name?: string) => Promise<void>;
   logout: () => Promise<void>;
   saveWorkflow: (name: string) => Promise<void>;
   loadWorkflows: () => Promise<void>;
@@ -60,10 +99,20 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     openai: null
     },
 
+  /**
+   * Updates the workflow name
+   * @method setWorkflowName
+   * @param {string} name - New workflow name
+   */
   setWorkflowName: (name) => {
     set({ workflowName: name });
   },
 
+  /**
+   * Saves current state to history stack for undo/redo
+   * Creates a deep copy of nodes and edges
+   * @method saveToHistory
+   */
   saveToHistory: () => {
     const { nodes, edges, history, historyIndex } = get();
     const currentState = { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) };
@@ -72,6 +121,12 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set({ history: newHistory, historyIndex: newHistory.length - 1 });
   },
 
+  /**
+   * Fetches execution results for a specific workflow run
+   * @method fetchWorkflowResults
+   * @async
+   * @param {string} executionId - ID of the workflow execution
+   */
   fetchWorkflowResults: async (executionId: string) => {
     try {
       const response = await databases.listDocuments(
@@ -108,6 +163,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     }
   },
   
+  /**
+   * Updates workflow nodes
+   * @method setNodes
+   * @param {Node[]|Function} newNodes - New nodes array or update function
+   */
   setNodes: (newNodes) => {
     if (typeof newNodes === 'function') {
       set((state) => ({ nodes: newNodes(state.nodes) }));
@@ -117,6 +177,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     debouncedSave();
   },
 
+  /**
+   * Updates workflow edges
+   * @method setEdges
+   * @param {Edge[]|Function} newEdges - New edges array or update function
+   */
   setEdges: (newEdges) => {
     if (typeof newEdges === 'function') {
       set((state) => ({ edges: newEdges(state.edges) }));
@@ -126,6 +191,12 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     debouncedSave();
   },
 
+  /**
+   * Updates data for a specific edge
+   * @method updateEdge
+   * @param {string} edgeId - ID of the edge to update
+   * @param {any} newData - New edge data
+   */
   updateEdge: (edgeId, newData) => {
     const { edges } = get();
     get().saveToHistory();
@@ -134,6 +205,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     debouncedSave();
   },
 
+  /**
+   * Deletes a node and its connected edges
+   * @method deleteNode
+   * @param {string} nodeId - ID of the node to delete
+   */
   deleteNode: (nodeId) => {
     const { nodes, edges } = get();
     get().saveToHistory();
@@ -144,6 +220,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     debouncedSave();
   },
 
+  /**
+   * Undoes the last action using history stack
+   * @method undo
+   */
   undo: () => {
     const { historyIndex, history } = get();
     if (historyIndex > 0) {
@@ -153,6 +233,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     }
   },
 
+  /**
+   * Redoes the last undone action using history stack
+   * @method redo
+   */
   redo: () => {
     const { historyIndex, history } = get();
     if (historyIndex < history.length - 1) {
@@ -162,6 +246,12 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     }
   },
 
+  /**
+   * Checks for an existing user session
+   * @method checkSession
+   * @async
+   * @returns {Promise<boolean>} Whether a valid session exists
+   */
   checkSession: async () => {
     try {
       const account = new Account(client);
@@ -178,12 +268,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     return false;
   },
 
+  /**
+   * Authenticates user with email and password
+   * @method login
+   * @async
+   * @param {string} email - User's email
+   * @param {string} password - User's password
+   */
   login: async (email, password) => {
     try {
       const account = new Account(client);
       await account.createEmailPasswordSession(email, password);
       const user = await account.get();
-      console.log("User logged in:", user);
       set({ user: { id: user.$id, email: user.email }, history: [], historyIndex: -1 });
       await get().loadWorkflows();
       await get().loadAPIKeys();
@@ -194,6 +290,64 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     }
   },
 
+  /**
+   * Registers a new user
+   * @method register
+   * @async
+   * @param {string} email - User's email
+   * @param {string} password - User's password
+   * @param {string} [name] - User's name (optional)
+   */  register: async (email: string, password: string, name?: string) => {
+    try {
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        throw new Error("Invalid email format");
+      }
+
+      // Validate password (at least one uppercase character, no special characters)
+      if (!/^[a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*$/.test(password)) {
+        throw new Error("Password must contain at least one uppercase letter and only letters/numbers");
+      }
+
+      const account = new Account(client);
+
+      // Create the user account with a valid ID format
+      const userId = ID.unique().replace(/[^a-zA-Z0-9\-_\.]/g, '').substring(0, 36);
+      await account.create(
+        userId,
+        email,
+        password,
+        name || email.split('@')[0]
+      );
+
+      // Create session after successful registration
+      await account.createEmailPasswordSession(email, password);
+
+      // Get the user details
+      const accountDetails = await account.get();
+
+      // Set the user in the store
+      set({ user: accountDetails });
+
+      // Show success message
+      toast.success("Registration successful!");
+    } catch (error: any) {
+      console.error("Registration error:", error);
+      
+      if (error?.code === 409) {
+        throw new Error("Email already registered");
+      } else {
+        throw new Error(error?.message || "Registration failed");
+      }
+    }
+  },
+
+  /**
+   * Logs out current user and clears state
+   * @method logout
+   * @async
+   */
   logout: async () => {
     try {
       const account = new Account(client);
@@ -214,6 +368,13 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     }
   },
 
+  /**
+   * Updates API key for a specific provider
+   * @method updateAPIKey
+   * @async
+   * @param {string} provider - API provider name
+   * @param {string} key - New API key
+   */
   updateAPIKey: async (provider, key) => {
     const { user, apiKeys } = get();
     if (!user) return;
@@ -227,7 +388,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       const response = await databases.listDocuments(
         DATABASE_ID,
         API_KEYS_COLLECTION,
-        [Query.equal("userId", user.id)]
+        [Query.equal("userId", [user.id])] // Fix: Pass userId as an array
       );
 
       if (response.documents.length > 0) {
@@ -235,7 +396,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           DATABASE_ID,
           API_KEYS_COLLECTION,
           response.documents[0].$id,
-          { [provider]: key, lastUpdated: new Date().toISOString() }
+          { 
+            userId: user.id,
+            [provider]: key, 
+            lastUpdated: new Date().toISOString() 
+          }
         );
       } else {
         await databases.createDocument(
@@ -250,6 +415,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           }
         );
       }
+      
+      toast.success(`${provider.toUpperCase()} API key saved successfully!`);
     } catch (error) {
       // Revert optimistic update on error
       console.error(`Error updating ${provider} API key:`, error);
@@ -258,6 +425,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     }
   },
 
+  /**
+   * Loads stored API keys for current user
+   * @method loadAPIKeys
+   * @async
+   */
   loadAPIKeys: async () => {
     const { user } = get();
     if (!user) return;
@@ -266,7 +438,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       const response = await databases.listDocuments(
         DATABASE_ID,
         API_KEYS_COLLECTION,
-        [Query.equal("userId", user.id)]
+        [Query.equal("userId", [user.id])] // Fix: Pass userId as an array
       );
 
       if (response.documents.length > 0) {
@@ -283,6 +455,13 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     }
   },
 
+  /**
+   * Saves current workflow to database
+   * Creates new workflow if none exists, updates existing one otherwise
+   * @method saveWorkflow
+   * @async
+   * @param {string} name - Name of the workflow
+   */
   saveWorkflow: async (name) => {
     const { nodes, edges, user, currentWorkflowId, workflowName } = get();
     if (!user) return alert("Please log in to save workflows.");
@@ -290,18 +469,17 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     try {
       const serializedNodes = JSON.stringify(nodes);
       const serializedEdges = JSON.stringify(edges);
-      const saveName = name || workflowName;
-      if (currentWorkflowId && typeof currentWorkflowId === "string") {
+      const saveName = name || workflowName;      if (currentWorkflowId && typeof currentWorkflowId === "string") {
         await databases.updateDocument(
           DATABASE_ID,
-          MAIN_WORKFLOW_ID,
+          MAIN_WORKFLOW_COLLECTION,
           currentWorkflowId,
           { name: saveName, nodes: serializedNodes, edges: serializedEdges, lastUpdated: new Date().toISOString() }
         );
       } else {
         const response = await databases.createDocument(
           DATABASE_ID,
-          MAIN_WORKFLOW_ID,
+          MAIN_WORKFLOW_COLLECTION,
           ID.unique(),
           { userId: user.id, name: saveName, nodes: serializedNodes, edges: serializedEdges, created: new Date().toISOString(), lastUpdated: new Date().toISOString() },
           [
@@ -317,13 +495,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     }
   },
 
+  /**
+   * Loads workflows for current user
+   * Sets the most recently updated workflow as active
+   * @method loadWorkflows
+   * @async
+   */
   loadWorkflows: async () => {
     const { user } = get();
-    if (!user) return;
-    try {
+    if (!user) return;    try {
       const response = await databases.listDocuments(
         DATABASE_ID,
-        MAIN_WORKFLOW_ID,
+        MAIN_WORKFLOW_COLLECTION,
         [Query.equal("userId", String(user.id)), Query.orderDesc("lastUpdated")]
       );
       if (response.documents.length > 0) {
@@ -339,6 +522,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       }
     } catch (error) {
       console.error("Error loading workflows:", error);
+      toast.error("Failed to load workflows. Please try refreshing the page.");
     }
   }
 }));

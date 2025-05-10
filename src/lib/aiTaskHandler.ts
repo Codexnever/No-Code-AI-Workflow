@@ -1,35 +1,89 @@
-import { TaskHandler, TaskConfig, TaskResult, registerTaskHandler, executeWorkflow } from './workflowExecutor';
+/**
+ * @fileoverview AI Task Handler Implementation
+ * This module provides the implementation for handling AI-based tasks in the workflow.
+ * It manages AI model selection, parameter validation, and result generation.
+ * 
+ * Key features:
+ * - AI model configuration and validation
+ * - Parameter management (tokens, temperature)
+ * - Response simulation for development
+ * - Error handling and result formatting
+ */
 
-interface AITaskParameters {
-  prompt?: string;
-  model?: string;
-  maxTokens?: number;
-  temperature?: number;
-}
+import OpenAI from 'openai';
+import { TaskHandler, TaskConfig, TaskResult } from './types';
 
-// Implementation of AI task handler
+const DEFAULT_MODEL = 'gpt-4o-mini';
+
+/**
+ * Implementation of the AI Task Handler
+ * Manages the execution of AI-based tasks in the workflow using OpenAI's API
+ * 
+ * @class AITaskHandler
+ * @implements {TaskHandler}
+ */
 export class AITaskHandler implements TaskHandler {
+  options?: { apiKey?: string };
+
+  /**
+   * Executes an AI task with the given configuration
+   * @async
+   * @method execute
+   * @param {TaskConfig} config - Task configuration including parameters
+   * @param {Record<string, TaskResult>} [previousResults] - Results from previous tasks
+   * @returns {Promise<TaskResult>} Result of the AI task execution
+   * @throws {Error} When model validation fails or API key is missing
+   */
   async execute(
     config: TaskConfig,
     previousResults?: Record<string, TaskResult>
   ): Promise<TaskResult> {
+    if (!this.options?.apiKey) {
+      return {
+        success: false,
+        error: 'OpenAI API key is not configured',
+        metadata: {
+          nodeId: config.nodeId,
+          executionId: '',
+          timestamp: new Date().toISOString(),
+          taskType: 'aiTask'
+        }
+      };
+    }
+
     try {
-      const params = config.parameters as AITaskParameters;
+      const { prompt = '', model, maxTokens, temperature } = config.parameters;
       
-      // Extract prompt from parameters or use default
-      const prompt = params.prompt || 'Default prompt';
+      const openai = new OpenAI({
+        apiKey: this.options.apiKey,
+        dangerouslyAllowBrowser: true
+      });
       
-      // Extract model configuration
-      const model = params.model || 'gpt-4o-mini';
-      const maxTokens = params.maxTokens || 100;
-      const temperature = params.temperature || 0.7;
+      // console.log(`Executing AI task with model: ${model}`);
       
-      console.log(`Executing AI task with model: ${model}`);
-      console.log(`Prompt: ${prompt}`);
-      console.log(`Parameters: maxTokens=${maxTokens}, temperature=${temperature}`);
+      const response = await openai.chat.completions.create({
+        model: model || DEFAULT_MODEL,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: maxTokens || parseInt(process.env.MAX_TOKENS || '4000'),
+        temperature: temperature || parseFloat(process.env.DEFAULT_TEMPERATURE || '0.7')
+      });      
       
-      // Simulated API call
-      return await simulateAIAPICall(prompt, model, maxTokens, temperature, config.nodeId);
+      const aiResponse = response.choices[0].message.content || '';
+
+      return {
+        success: true,
+        data: {
+          text: aiResponse,
+          tokens: response.usage?.total_tokens || 0,
+          model: model
+        },
+        metadata: {
+          nodeId: config.nodeId,
+          executionId: '',
+          timestamp: new Date().toISOString(),
+          taskType: 'aiTask'
+        }
+      };
     } catch (error) {
       console.error('AI Task execution error:', error);
       return {
@@ -46,46 +100,9 @@ export class AITaskHandler implements TaskHandler {
   }
 }
 
-// Simulate AI API call (replace with actual API call in production)
-async function simulateAIAPICall(
-  prompt: string,
-  model: string,
-  maxTokens: number,
-  temperature: number,
-  nodeId: string
-): Promise<TaskResult> {
-  await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate processing time
-  
-  const success = Math.random() < 0.9; // 90% success rate
+// Export a singleton instance
+export const aiTaskHandler = new AITaskHandler();
 
-  if (success) {
-    return {
-      success: true,
-      data: {
-        text: `AI response for prompt: "${prompt}" using model ${model}`,
-        tokens: Math.floor(Math.random() * maxTokens),
-        model: model
-      },
-      metadata: { 
-        taskType: 'aiTask', 
-        timestamp: new Date().toISOString(),
-        nodeId: nodeId,
-        executionId: '' // Will be set during workflow execution
-      }
-    };
-  } else {
-    return {
-      success: false,
-      error: 'AI service returned an error',
-      metadata: { 
-        taskType: 'aiTask', 
-        timestamp: new Date().toISOString(),
-        nodeId: nodeId,
-        executionId: '' // Will be set during workflow execution
-      }
-    };
-  }
+export function updateAITaskHandlerOptions(options: { apiKey?: string }) {
+  aiTaskHandler.options = options;
 }
-
-// Register the AI task handler
-registerTaskHandler('aiTask', new AITaskHandler());

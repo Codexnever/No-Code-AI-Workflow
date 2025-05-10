@@ -1,4 +1,21 @@
-// src/components/WorkflowBuilder.tsx
+/**
+ * @fileoverview Main Workflow Builder Component
+ * This component provides the core workflow building interface using React Flow.
+ * It manages the visual workflow editor, node interactions, and state management.
+ * 
+ * Key features:
+ * - Drag and drop node creation
+ * - Visual workflow editing
+ * - Node and edge management
+ * - Undo/redo functionality
+ * - Auto-save capabilities
+ * - Keyboard shortcuts
+ * 
+ * @module WorkflowBuilder
+ * @requires ReactFlow
+ * @requires workflowStore
+ * @requires AITaskNode
+ */
 
 "use client";
 import React, { useEffect, useCallback, useRef } from "react";
@@ -21,6 +38,7 @@ import AITaskNode from "../components/nodes/AITaskNode";
 import ConditionalEdge from "../components/ConditionalEdge";
 import { useWorkflowStore } from "../store/workflowStore";
 import { Undo2, Redo2, Save } from "lucide-react";
+import { DEFAULT_MODEL, AI_MODELS } from "../config/aiModels";
 import { toast } from 'react-toastify';
 import WorkflowExecutionPanel from "./WorkflowExecutionPanel";
 
@@ -104,7 +122,15 @@ const WorkflowBuilder: React.FC = () => {
           x: event.clientX - position.left - 75,
           y: event.clientY - position.top
         },
-        data: { label: `AI Task`, parameters: { prompt: "", model: "gpt-4", maxTokens: 100 } }
+        data: { 
+          label: `AI Task`, 
+          parameters: { 
+            prompt: "", 
+            model: DEFAULT_MODEL, 
+            maxTokens: AI_MODELS[DEFAULT_MODEL].maxTokens,
+            temperature: AI_MODELS[DEFAULT_MODEL].defaultTemperature 
+          } 
+        }
       };
 
       setNodes([...nodes, newNode]);
