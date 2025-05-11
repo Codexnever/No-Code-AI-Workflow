@@ -7,7 +7,6 @@ import { Inter } from "next/font/google";
 import { useEffect, useState } from "react";
 import { useWorkflowStore } from "../store/workflowStore";
 import LoginModal from "../components/others/LoginModal";
-
 const inter = Inter({ subsets: ["latin"] });
 
 export default function RootLayout({
@@ -41,6 +40,11 @@ export default function RootLayout({
 
   return (
     <html lang="en">
+      <head>
+        <title>No-Code-AI Workflow</title>
+        <link rel="icon" href="/no code ai.png" type="image/png" />
+        <meta name="description" content="AI Workflow Builder Application" />
+      </head>
       <body className={inter.className}>
         {isLoading ? (
           <div className="min-h-screen flex items-center justify-center">
