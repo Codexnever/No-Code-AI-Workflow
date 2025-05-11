@@ -29,7 +29,6 @@ import ReactFlow, {
   applyNodeChanges,
   NodeChange,
   Panel,
-  Edge,
   EdgeTypes,
   NodeTypes
 } from "reactflow";
@@ -37,9 +36,8 @@ import "reactflow/dist/style.css";
 import AITaskNode from "../components/nodes/AITaskNode";
 import ConditionalEdge from "../components/ConditionalEdge";
 import { useWorkflowStore } from "../store/workflowStore";
-import { Undo2, Redo2, Save } from "lucide-react";
+import { Undo2, Redo2 } from "lucide-react";
 import { DEFAULT_MODEL, AI_MODELS } from "../config/aiModels";
-import { toast } from 'react-toastify';
 import WorkflowExecutionPanel from "./WorkflowExecutionPanel";
 
 const nodeTypes: NodeTypes = { aiTask: AITaskNode };
@@ -54,9 +52,7 @@ const WorkflowBuilder: React.FC = () => {
     loadWorkflows, 
     user,
     undo,
-    redo,
-    saveWorkflow,
-    workflowName
+    redo
   } = useWorkflowStore();
   
   const flowWrapperRef = useRef<HTMLDivElement>(null);

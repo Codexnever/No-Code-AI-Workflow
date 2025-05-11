@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import { LayoutDashboard, Settings, Box, LogOut } from "lucide-react";
-import { motion } from "framer-motion";
 import AiNode from "./nodes/AiNode";
 import { useWorkflowStore } from "../store/workflowStore";
 

@@ -17,7 +17,7 @@
 
 import { Node, Edge } from 'reactflow';
 import { toast } from 'react-toastify';
-import { databases, ID, Permission, Role, Query, DATABASE_ID } from './appwrite';
+import { databases, ID, Query, DATABASE_ID } from './appwrite';
 import { AITaskHandler } from './aiTaskHandler';
 
 // Constants for environment variables

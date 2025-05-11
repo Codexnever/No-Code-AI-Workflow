@@ -18,7 +18,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { useWorkflowStore } from '../../store/workflowStore';
-import { Key, Lock, Save, Eye, EyeOff } from 'lucide-react';
+import { Key, Lock, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 const APIKeyManager: React.FC = () => {  const { 

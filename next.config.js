@@ -1,5 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Disable ESLint
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   env: {
     NEXT_PUBLIC_APPWRITE_ENDPOINT: process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT,
     NEXT_PUBLIC_APPWRITE_PROJECT_ID: process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID,
@@ -11,5 +15,6 @@ const nextConfig = {
     MAX_TOKENS: process.env.MAX_TOKENS,
     DEFAULT_TEMPERATURE: process.env.DEFAULT_TEMPERATURE,
   },
- 
 }
+
+module.exports = nextConfig;

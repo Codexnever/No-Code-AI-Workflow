@@ -19,7 +19,7 @@ const databases = new Databases(client);
 try {
   account.createAnonymousSession();
 } catch (error) {
-  // console.log('Anonymous session already exists or failed to create');
+  console.error('Anonymous session already exists or failed to create');
 }
 
 // Set default database ID for all database operations
