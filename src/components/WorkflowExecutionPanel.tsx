@@ -17,7 +17,7 @@
  */
 
 "use client";
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { executeWorkflow } from '../lib/workflowExecutor';
 import { useWorkflowStore } from '../store/workflowStore';
 import { Play, Settings } from 'lucide-react';
@@ -33,11 +33,19 @@ const WorkflowExecutionPanel: React.FC = () => {
     apiKeys,
     user,
     workflowName,
-    setWorkflowName
+    setWorkflowName,
+    currentWorkflowId
   } = useWorkflowStore();
   
   const [showSettings, setShowSettings] = useState(false);
   const [executing, setExecuting] = useState(false);
+
+  // Load workflow results when component mounts
+  useEffect(() => {
+    if (currentWorkflowId && user) {
+      fetchWorkflowResults(currentWorkflowId);
+    }
+  }, [currentWorkflowId, user]);
 
   const handleExecute = async () => {
     if (nodes.length === 0) {
@@ -53,7 +61,6 @@ const WorkflowExecutionPanel: React.FC = () => {
     
     try {
       setExecuting(true);
-      toast.info('Starting workflow execution...');
       
       const results = await executeWorkflow(nodes, edges, { 
         openAIApiKey: apiKeys.openai, 

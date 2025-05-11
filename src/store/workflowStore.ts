@@ -17,7 +17,7 @@
  */
 
 import { create } from "zustand";
-import { client, databases, Role, Permission, Account, ID, Query, DATABASE_ID } from "../lib/appwrite";
+import { client, databases, Role, Permission, Account, ID, Query, DATABASE_ID,account } from "../lib/appwrite";
 import { debounce } from "lodash";
 import { toast } from 'react-toastify';
 import { Node, Edge } from 'reactflow';
@@ -126,13 +126,17 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
    * @method fetchWorkflowResults
    * @async
    * @param {string} executionId - ID of the workflow execution
-   */
-  fetchWorkflowResults: async (executionId: string) => {
+   */  fetchWorkflowResults: async (executionId: string) => {
+    const { user } = get();
+    if (!user || !user.id) return;
     try {
       const response = await databases.listDocuments(
         DATABASE_ID,
         WORKFLOW_EXECUTION_COLLECTION,
-        [Query.equal("executionId", executionId)]
+        [
+          Query.equal("executionId", executionId),
+          Query.equal("userId", user.id)
+        ]
       );
 
       if (response.documents.length > 0) {
@@ -251,20 +255,23 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
    * @method checkSession
    * @async
    * @returns {Promise<boolean>} Whether a valid session exists
-   */
-  checkSession: async () => {
+   */  checkSession: async () => {
     try {
-      const account = new Account(client);
       const user = await account.get();
       if (user) {
         set({ user: { id: user.$id, email: user.email } });
         await get().loadWorkflows();
         await get().loadAPIKeys();
+        
+        // Only fetch workflow results if we have a loaded workflow
+        const state = get();
+        if (state.currentWorkflowId) {
+          await get().fetchWorkflowResults(state.currentWorkflowId);
+        }
         return true;
       }
     } catch (error) {
-      console.log("No active session found");
-    }
+      console.error("Session check error:", error);}
     return false;
   },
 
@@ -274,15 +281,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
    * @async
    * @param {string} email - User's email
    * @param {string} password - User's password
-   */
-  login: async (email, password) => {
-    try {
-      const account = new Account(client);
-      await account.createEmailPasswordSession(email, password);
+   */  login: async (email, password) => {
+    try {      await account.createEmailPasswordSession(email, password);
       const user = await account.get();
       set({ user: { id: user.$id, email: user.email }, history: [], historyIndex: -1 });
       await get().loadWorkflows();
       await get().loadAPIKeys();
+      
+      // Load workflow results if we have a workflow loaded
+      const { currentWorkflowId } = get();
+      if (currentWorkflowId) {
+        await get().fetchWorkflowResults(currentWorkflowId);
+      }
       toast.success("Successfully logged in!");
     } catch (error) {
       console.error("Login error:", error);
@@ -305,15 +315,15 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         throw new Error("Invalid email format");
       }
 
-      // Validate password (at least one uppercase character, no special characters)
-      if (!/^[a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*$/.test(password)) {
-        throw new Error("Password must contain at least one uppercase letter and only letters/numbers");
+      // Delete any existing session
+      try {
+        await account.deleteSession('current');
+      } catch (error) {
+        // Ignore error if no session exists
       }
 
-      const account = new Account(client);
-
-      // Create the user account with a valid ID format
-      const userId = ID.unique().replace(/[^a-zA-Z0-9\-_\.]/g, '').substring(0, 36);
+      // Create the user account
+      const userId = ID.unique();
       await account.create(
         userId,
         email,
@@ -321,16 +331,25 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         name || email.split('@')[0]
       );
 
-      // Create session after successful registration
+      // Create new session and get account details
       await account.createEmailPasswordSession(email, password);
+      const user = await account.get();
 
-      // Get the user details
-      const accountDetails = await account.get();
+      // Set the user state with proper format
+      set({ 
+        user: { 
+          id: user.$id, 
+          email: user.email 
+        },
+        history: [],
+        historyIndex: -1
+      });
 
-      // Set the user in the store
-      set({ user: accountDetails });
+      // Initialize user's data
+      await get().loadWorkflows();
+      await get().loadAPIKeys();
 
-      // Show success message
+      // Show success message and return
       toast.success("Registration successful!");
     } catch (error: any) {
       console.error("Registration error:", error);
@@ -347,10 +366,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
    * Logs out current user and clears state
    * @method logout
    * @async
-   */
-  logout: async () => {
+   */  logout: async () => {
     try {
-      const account = new Account(client);
       await account.deleteSession("current");
       set({ 
         user: null, 
@@ -374,21 +391,38 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
    * @async
    * @param {string} provider - API provider name
    * @param {string} key - New API key
-   */
-  updateAPIKey: async (provider, key) => {
+   */  updateAPIKey: async (provider: string, key: string) => {
     const { user, apiKeys } = get();
-    if (!user) return;
-
+    
     try {
-      // First update state optimistically
+      // Check if user exists and has valid ID
+      if (!user?.id) {
+        const currentUser = await account.get();
+        if (currentUser?.$id) {
+          // Update user state if needed
+          set({ user: { id: currentUser.$id, email: currentUser.email } });
+        } else {
+          toast.error("Please log in to save API keys");
+          return;
+        }
+      }
+
+      // Get latest user state after potential update
+      const currentState = get();
+      if (!currentState.user?.id) {
+        toast.error("Please log in to save API keys");
+        return;
+      }
+
+      // Update state optimistically
       const newApiKeys = { ...apiKeys, [provider]: key };
       set({ apiKeys: newApiKeys });
 
-      // Then update in database
+      // Update in database
       const response = await databases.listDocuments(
         DATABASE_ID,
         API_KEYS_COLLECTION,
-        [Query.equal("userId", [user.id])] // Fix: Pass userId as an array
+        [Query.equal("userId", currentState.user.id)]
       );
 
       if (response.documents.length > 0) {
@@ -397,7 +431,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           API_KEYS_COLLECTION,
           response.documents[0].$id,
           { 
-            userId: user.id,
+            userId: currentState.user.id,
             [provider]: key, 
             lastUpdated: new Date().toISOString() 
           }
@@ -408,7 +442,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           API_KEYS_COLLECTION,
           ID.unique(),
           {
-            userId: user.id,
+            userId: currentState.user.id,
             [provider]: key,
             created: new Date().toISOString(),
             lastUpdated: new Date().toISOString()
@@ -418,7 +452,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       
       toast.success(`${provider.toUpperCase()} API key saved successfully!`);
     } catch (error) {
-      // Revert optimistic update on error
       console.error(`Error updating ${provider} API key:`, error);
       set({ apiKeys: { ...apiKeys } }); // Revert to previous state
       toast.error(`Failed to save ${provider} API key. Please try again.`);
@@ -429,16 +462,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
    * Loads stored API keys for current user
    * @method loadAPIKeys
    * @async
-   */
-  loadAPIKeys: async () => {
+   */  loadAPIKeys: async () => {
     const { user } = get();
-    if (!user) return;
+    if (!user || !user.id) return;
 
-    try {
-      const response = await databases.listDocuments(
+    try {      const response = await databases.listDocuments(
         DATABASE_ID,
         API_KEYS_COLLECTION,
-        [Query.equal("userId", [user.id])] // Fix: Pass userId as an array
+        [Query.equal("userId", user.id)]
       );
 
       if (response.documents.length > 0) {
@@ -483,9 +514,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           ID.unique(),
           { userId: user.id, name: saveName, nodes: serializedNodes, edges: serializedEdges, created: new Date().toISOString(), lastUpdated: new Date().toISOString() },
           [
-            Permission.read(Role.user(user.id)),
-            Permission.update(Role.user(user.id)),
-            Permission.delete(Role.user(user.id))
+            Permission.read(Role.any()),
+            Permission.update(Role.any()),
+            Permission.delete(Role.any()),
           ]
         );
         set({ currentWorkflowId: response.$id, workflowName: saveName });
