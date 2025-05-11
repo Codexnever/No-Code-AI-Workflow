@@ -14,7 +14,6 @@ const AiNode = () => {
 
   return (
     <aside className="w-50 h-screen bg-gray-900 text-white p-4 flex flex-col">
-      <h2 className="text-lg font-semibold mb-4">Nodes</h2>
       {/* Draggable AI Task Node */}
       <div
         draggable={!!user}

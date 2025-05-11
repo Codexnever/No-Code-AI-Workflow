@@ -21,7 +21,6 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const register = useWorkflowStore((state) => state.register);
   const loadWorkflows = useWorkflowStore((state) => state.loadWorkflows);
   const user = useWorkflowStore((state) => state.user);
-
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
@@ -34,11 +33,8 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
         onClose();
       } else {
         await register(email, password, name);
-       
-        setIsLogin(true);
-        setPassword("");
-        setEmail("");
-        setError("Registration successful! Please login.");
+        await loadWorkflows(); // Load workflows after registration
+        onClose();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : isLogin ? "Login failed" : "Registration failed");
