@@ -1,8 +1,9 @@
+![AI Workflow Builder Preview](public/img.png)
+
+
 # 🔮 AI Workflow Builder
 
 A powerful and intuitive visual workflow builder for AI tasks, built with Next.js, React Flow, and Appwrite.
-
-![AI Workflow Builder Preview](public/img.png)
 
 ## ✨ Features
 
