@@ -307,60 +307,59 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
    * @param {string} email - User's email
    * @param {string} password - User's password
    * @param {string} [name] - User's name (optional)
-   */  register: async (email: string, password: string, name?: string) => {
-    try {
-      // Validate email format
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        throw new Error("Invalid email format");
-      }
-
-      // Delete any existing session
-      try {
-        await account.deleteSession('current');
-      } catch (error) {
-        // Ignore error if no session exists
-      }
-
-      // Create the user account
-      const userId = ID.unique();
-      await account.create(
-        userId,
-        email,
-        password,
-        name || email.split('@')[0]
-      );
-
-      // Create new session and get account details
-      await account.createEmailPasswordSession(email, password);
-      const user = await account.get();
-
-      // Set the user state with proper format
-      set({ 
-        user: { 
-          id: user.$id, 
-          email: user.email 
-        },
-        history: [],
-        historyIndex: -1
-      });
-
-      // Initialize user's data
-      await get().loadWorkflows();
-      await get().loadAPIKeys();
-
-      // Show success message and return
-      toast.success("Registration successful!");
-    } catch (error: any) {
-      console.error("Registration error:", error);
-      
-      if (error?.code === 409) {
-        throw new Error("Email already registered");
-      } else {
-        throw new Error(error?.message || "Registration failed");
-      }
+   */ 
+   register: async (email: string, password: string, name?: string) => {
+  try {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+      toast.error("Invalid email format");
     }
-  },
+
+    if (!password || password.length < 6) {
+    toast.error("Password must be at least 6 characters");
+    }
+
+    try {
+      await account.deleteSession('current');
+    } catch (error) {
+      console.error("Session Deleting error:", error);
+    }
+
+    const userId = ID.unique();
+    await account.create(
+      userId,
+      email,
+      password,
+      name || email.split('@')[0]
+    );
+
+    await account.createEmailPasswordSession(email, password);
+    const user = await account.get();
+
+    set({ 
+      user: { 
+        id: user.$id, 
+        email: user.email 
+      },
+      history: [],
+      historyIndex: -1
+    });
+
+    await get().loadWorkflows();
+    await get().loadAPIKeys();
+
+    toast.success("Registration successful!");
+  } catch (error: any) {
+    console.error("Registration error:", error);
+
+    if (error?.code === 409) {
+      toast.error("Email already registered");
+    } else {
+      throw new Error(error?.message || "Registration failed");
+    }
+  }
+}
+
 
   /**
    * Logs out current user and clears state
